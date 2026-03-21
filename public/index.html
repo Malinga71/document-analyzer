@@ -235,11 +235,15 @@
   .module.collapsed { height: 52px; }
   .module.collapsed.full-width { height: 52px; }
 
-  /* ── Items ── */
+  /* ── Items (draggable sub-items) ── */
   .item {
     background: var(--grey-bg); border: 1px solid var(--border);
     border-radius: 8px; padding: 11px 13px; margin-bottom: 8px;
+    cursor: grab; transition: opacity .2s, border-color .2s;
   }
+  .item:active { cursor: grabbing; }
+  .item.item-dragging { opacity: .4; }
+  .item.item-drag-over { border-color: var(--orange); border-style: dashed; }
   .item:last-child { margin-bottom: 0; }
   .item-label {
     font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -1363,7 +1367,7 @@ ${content}
     dashboard.classList.add('active');
   }
 
-  // Build a module tile with sub-items inside
+  // Build a module tile with draggable sub-items inside
   function buildModuleTile(title, items, colorIndex) {
     const color = MODULE_COLORS[(colorIndex || 0) % MODULE_COLORS.length];
     const el = document.createElement('div');
@@ -1372,7 +1376,7 @@ ${content}
 
     let bodyHtml = '';
     for (const item of items) {
-      bodyHtml += `<div class="item">
+      bodyHtml += `<div class="item" draggable="true">
         <div class="item-label">
           <span contenteditable="true">${esc(item.label)}</span>
           <div class="item-actions"><button onclick="window._deleteItem(this)">&#10005;</button></div>
@@ -1393,25 +1397,116 @@ ${content}
         </div>
       </div>
       <div class="module-body">${bodyHtml}</div>`;
+
+    // Init item drag within this module
+    initItemDrag(el);
     return el;
+  }
+
+  // ── Item drag & drop within a module ──
+  let itemDragSrc = null;
+  function initItemDrag(moduleEl) {
+    moduleEl.querySelectorAll('.item').forEach(item => {
+      item.addEventListener('dragstart', e => {
+        e.stopPropagation(); // Don't trigger module drag
+        itemDragSrc = item;
+        item.classList.add('item-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      item.addEventListener('dragend', e => {
+        e.stopPropagation();
+        item.classList.remove('item-dragging');
+        moduleEl.querySelectorAll('.item').forEach(i => i.classList.remove('item-drag-over'));
+      });
+      item.addEventListener('dragover', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (itemDragSrc && itemDragSrc !== item && itemDragSrc.closest('.module') === item.closest('.module')) {
+          item.classList.add('item-drag-over');
+        }
+      });
+      item.addEventListener('dragleave', e => {
+        e.stopPropagation();
+        item.classList.remove('item-drag-over');
+      });
+      item.addEventListener('drop', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        item.classList.remove('item-drag-over');
+        if (itemDragSrc && itemDragSrc !== item && itemDragSrc.closest('.module') === item.closest('.module')) {
+          const body = item.closest('.module-body');
+          const items = [...body.querySelectorAll('.item')];
+          if (items.indexOf(itemDragSrc) < items.indexOf(item)) {
+            item.after(itemDragSrc);
+          } else {
+            item.before(itemDragSrc);
+          }
+        }
+      });
+    });
   }
 
   // Add sub-item within a module
   window._addSubItem = function(btn) {
     const body = btn.closest('.module-body');
+    const mod = btn.closest('.module');
     const item = document.createElement('div');
     item.className = 'item';
+    item.draggable = true;
     item.innerHTML = `<div class="item-label"><span contenteditable="true">New Item</span><div class="item-actions"><button onclick="window._deleteItem(this)">&#10005;</button></div></div><div class="item-content" contenteditable="true">Click to edit...</div>`;
     body.insertBefore(item, btn);
+    initItemDrag(mod);
   };
 
   // ── Static document parser ──
   // Returns: [{ title: string, items: [{ label: string, content: string, isHtml: bool }] }]
   function parseTextIntoModules(rawText, htmlContent) {
+    let modules;
     if (htmlContent) {
-      return parseHtmlIntoModules(htmlContent);
+      modules = parseHtmlIntoModules(htmlContent);
+    } else {
+      modules = parseTextByHeadings(rawText);
     }
-    return parseTextByHeadings(rawText);
+    // Ensure minimum 3 modules
+    return ensureMinimumModules(modules);
+  }
+
+  function ensureMinimumModules(modules) {
+    if (modules.length >= 3) return modules;
+    if (modules.length === 0) return [
+      { title: 'Introduction', items: [{ label: 'Overview', content: 'No content extracted.', isHtml: false }] },
+      { title: 'Body', items: [{ label: 'Content', content: '', isHtml: false }] },
+      { title: 'Conclusion', items: [{ label: 'Summary', content: '', isHtml: false }] }
+    ];
+
+    // Split the largest module to reach 3
+    while (modules.length < 3) {
+      // Find module with most items
+      let maxIdx = 0;
+      for (let i = 1; i < modules.length; i++) {
+        if (modules[i].items.length > modules[maxIdx].items.length) maxIdx = i;
+      }
+      const biggest = modules[maxIdx];
+      if (biggest.items.length >= 2) {
+        const mid = Math.ceil(biggest.items.length / 2);
+        const firstHalf = biggest.items.slice(0, mid);
+        const secondHalf = biggest.items.slice(mid);
+        const newTitle = biggest.title + ' (continued)';
+        modules.splice(maxIdx, 1,
+          { title: biggest.title, items: firstHalf },
+          { title: newTitle, items: secondHalf }
+        );
+      } else {
+        // Can't split further, add placeholder modules
+        if (modules.length === 1) {
+          modules.unshift({ title: 'Introduction', items: [{ label: 'Overview', content: 'Document overview section.', isHtml: false }] });
+          modules.push({ title: 'Conclusion', items: [{ label: 'Summary', content: 'Document summary section.', isHtml: false }] });
+        } else {
+          modules.push({ title: 'Additional Notes', items: [{ label: 'Notes', content: 'Add notes here.', isHtml: false }] });
+        }
+      }
+    }
+    return modules;
   }
 
   function parseHtmlIntoModules(htmlContent) {
@@ -1422,24 +1517,15 @@ ${content}
 
     let currentModTitle = 'Overview';
     let currentItems = [];
-    let currentSubLabel = '';
-    let currentSubContent = [];
 
-    function flushSubItem() {
-      const html = currentSubContent.join('').trim();
-      if (html) {
-        currentItems.push({
-          label: currentSubLabel || 'Details',
-          content: html,
-          isHtml: true
-        });
-      }
-      currentSubContent = [];
-      currentSubLabel = '';
+    function makeLabel(text) {
+      if (!text) return 'Details';
+      const clean = text.replace(/<[^>]*>/g, '').trim();
+      if (clean.length <= 70) return clean;
+      return clean.substring(0, 67) + '...';
     }
 
     function flushModule() {
-      flushSubItem();
       if (currentItems.length > 0) {
         modules.push({ title: currentModTitle, items: currentItems });
       }
@@ -1449,72 +1535,61 @@ ${content}
     for (const node of container.childNodes) {
       const tag = node.tagName ? node.tagName.toLowerCase() : '';
       const text = (node.textContent || '').trim();
+      if (!text && tag !== 'table') continue;
 
       // H1, H2 = new module
-      if (['h1', 'h2'].includes(tag) && text) {
+      if (['h1', 'h2'].includes(tag)) {
         flushModule();
         currentModTitle = text;
       }
-      // H3, H4, H5, H6 = new sub-item within module
-      else if (['h3', 'h4', 'h5', 'h6'].includes(tag) && text) {
-        flushSubItem();
-        currentSubLabel = text;
+      // H3-H6 = labeled sub-item
+      else if (['h3', 'h4', 'h5', 'h6'].includes(tag)) {
+        currentItems.push({ label: text, content: '', isHtml: true });
       }
       // Table = its own sub-item
       else if (tag === 'table') {
-        flushSubItem();
         currentItems.push({
           label: 'Table',
           content: '<div style="overflow-x:auto;">' + node.outerHTML + '</div>',
           isHtml: true
         });
       }
-      // Lists
+      // Lists — each list item becomes its own sub-item
       else if (['ul', 'ol'].includes(tag)) {
-        currentSubContent.push(node.outerHTML);
+        const listItems = node.querySelectorAll('li');
+        listItems.forEach(li => {
+          const liText = li.textContent.trim();
+          if (liText) {
+            currentItems.push({
+              label: makeLabel(liText),
+              content: li.innerHTML,
+              isHtml: true
+            });
+          }
+        });
       }
-      // Bold-start paragraphs — treat as sub-item label
+      // Paragraphs — each paragraph is its own sub-item
       else if (tag === 'p') {
         const firstStrong = node.querySelector('strong, b');
-        if (firstStrong && node.textContent.indexOf(firstStrong.textContent) === 0 && firstStrong.textContent.length < 80) {
-          flushSubItem();
-          currentSubLabel = firstStrong.textContent.replace(/:$/, '').trim();
-          // Rest of the paragraph as content
+        if (firstStrong && text.indexOf(firstStrong.textContent) === 0 && firstStrong.textContent.length < 80) {
+          const label = firstStrong.textContent.replace(/:$/, '').trim();
           const clone = node.cloneNode(true);
-          const strongEl = clone.querySelector('strong, b');
-          if (strongEl) strongEl.remove();
+          clone.querySelector('strong, b').remove();
           const rest = clone.innerHTML.replace(/^[\s:–—-]+/, '').trim();
-          if (rest) currentSubContent.push('<p>' + rest + '</p>');
-        } else if (text) {
-          currentSubContent.push(node.outerHTML);
+          currentItems.push({ label, content: rest || text, isHtml: true });
+        } else {
+          currentItems.push({ label: makeLabel(text), content: node.innerHTML, isHtml: true });
         }
       }
-      // Other elements
+      // Other block elements
       else {
         const html = node.outerHTML || text;
-        if (html && html.trim()) currentSubContent.push(html);
+        if (html.trim()) {
+          currentItems.push({ label: makeLabel(text), content: html, isHtml: true });
+        }
       }
     }
     flushModule();
-
-    // If we only got 1 module, try to split its items more
-    if (modules.length === 1 && modules[0].items.length === 1) {
-      const singleContent = modules[0].items[0].content;
-      // Split long HTML content by paragraphs into sub-items
-      const paras = singleContent.split(/<\/p>\s*<p/i).filter(p => p.trim());
-      if (paras.length > 2) {
-        modules[0].items = paras.map((p, i) => {
-          let html = p;
-          if (i > 0) html = '<p' + html;
-          if (i < paras.length - 1) html = html + '</p>';
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = html;
-          const plainText = tempDiv.textContent.trim();
-          const label = plainText.substring(0, 60).replace(/[.,:;]$/, '') + (plainText.length > 60 ? '...' : '');
-          return { label, content: html, isHtml: true };
-        });
-      }
-    }
 
     return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', items: [{ label: 'Content', content: htmlContent, isHtml: true }] }];
   }
@@ -1524,8 +1599,7 @@ ${content}
     const lines = rawText.split('\n');
     let currentModTitle = lastFileName || 'Document';
     let currentItems = [];
-    let currentSubLabel = '';
-    let currentSubLines = [];
+    let pendingLines = [];
 
     // Module-level headings (major sections)
     const moduleHeadings = [
@@ -1539,33 +1613,35 @@ ${content}
       { re: /^[A-Z][A-Z\s\-&]{5,}$/, extract: m => m[0] },
     ];
 
-    // Sub-item headings (within a module)
-    const subHeadings = [
+    // Sub-item indicators
+    const subItemPatterns = [
       { re: /^#{3,6}\s+(.+)/, extract: m => m[1] },
       { re: /^(\d+\.\d+\.?)\s+(.{3,})$/, extract: m => m[1] + ' ' + m[2] },
       { re: /^(\d+\.\d+\.\d+\.?)\s+(.{3,})$/, extract: m => m[1] + ' ' + m[2] },
       { re: /^([IVXLC]+\.)\s+(.+)/, extract: m => m[1] + ' ' + m[2] },
-      { re: /^([a-z]\))\s+(.{3,})$/, extract: m => m[1] + ' ' + m[2] },
-      { re: /^(\([a-z]+\))\s+(.{3,})$/, extract: m => m[1] + ' ' + m[2] },
-      { re: /^([a-z]\.)\s+([A-Z].{2,})$/, extract: m => m[1] + ' ' + m[2] },
+      { re: /^([a-z]\))\s+(.{3,})$/, extract: m => m[2], prefix: m => m[1] },
+      { re: /^(\([a-z]+\))\s+(.{3,})$/, extract: m => m[2], prefix: m => m[1] },
+      { re: /^(\([ivxlc]+\))\s+(.{3,})$/i, extract: m => m[2], prefix: m => m[1] },
+      { re: /^[-•·]\s+(.{3,})$/, extract: m => m[1] },
       { re: /^COLUMN HEADERS:\s*(.+)$/i, extract: m => 'Data: ' + m[1].split('|').slice(0, 3).map(s => s.trim()).join(', ') },
     ];
 
-    function flushSubItem() {
-      const text = currentSubLines.join('\n').trim();
+    function makeLabel(text) {
+      if (!text) return 'Details';
+      if (text.length <= 70) return text;
+      return text.substring(0, 67) + '...';
+    }
+
+    function flushPending() {
+      const text = pendingLines.join('\n').trim();
       if (text) {
-        currentItems.push({
-          label: currentSubLabel || text.substring(0, 60).replace(/[.,:;]$/, '') + (text.length > 60 ? '...' : ''),
-          content: text,
-          isHtml: false
-        });
+        currentItems.push({ label: makeLabel(text), content: text, isHtml: false });
       }
-      currentSubLines = [];
-      currentSubLabel = '';
+      pendingLines = [];
     }
 
     function flushModule() {
-      flushSubItem();
+      flushPending();
       if (currentItems.length > 0) {
         modules.push({ title: currentModTitle, items: currentItems });
       }
@@ -1574,17 +1650,14 @@ ${content}
 
     for (const line of lines) {
       const trimmed = line.trim();
+
+      // Blank line = flush pending text as a sub-item
       if (!trimmed) {
-        // Double blank = potential sub-item break
-        if (currentSubLines.length > 0 && currentSubLines[currentSubLines.length - 1] === '') {
-          flushSubItem();
-        } else {
-          currentSubLines.push('');
-        }
+        if (pendingLines.length > 0) flushPending();
         continue;
       }
 
-      // Check module-level headings first
+      // Check module-level headings
       let matched = false;
       for (const { re, extract } of moduleHeadings) {
         const m = trimmed.match(re);
@@ -1597,36 +1670,23 @@ ${content}
       }
       if (matched) continue;
 
-      // Check sub-item headings
-      for (const { re, extract } of subHeadings) {
-        const m = trimmed.match(re);
+      // Check sub-item patterns (bullets, numbered sub-sections)
+      for (const pat of subItemPatterns) {
+        const m = trimmed.match(pat.re);
         if (m) {
-          flushSubItem();
-          currentSubLabel = extract(m);
+          flushPending();
+          const label = pat.prefix ? pat.prefix(m) + ' ' + pat.extract(m) : pat.extract(m);
+          currentItems.push({ label: makeLabel(label), content: trimmed, isHtml: false });
           matched = true;
           break;
         }
       }
       if (matched) continue;
 
-      currentSubLines.push(trimmed);
+      // Regular line — accumulate (will become a sub-item on next blank line or heading)
+      pendingLines.push(trimmed);
     }
     flushModule();
-
-    // If only 1 module with 1 item, split by paragraphs
-    if (modules.length <= 1 && (modules.length === 0 || modules[0].items.length <= 1) && rawText.length > 300) {
-      const chunks = rawText.split(/\n\s*\n/).filter(c => c.trim());
-      if (chunks.length > 2) {
-        const items = chunks.map(chunk => {
-          const chunkLines = chunk.trim().split('\n');
-          const first = chunkLines[0].trim();
-          const label = first.length < 80 ? first : first.substring(0, 60) + '...';
-          const content = first.length < 80 && chunkLines.length > 1 ? chunkLines.slice(1).join('\n').trim() : chunk.trim();
-          return { label, content: content || first, isHtml: false };
-        });
-        return [{ title: currentModTitle || lastFileName || 'Document', items }];
-      }
-    }
 
     return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', items: [{ label: 'Content', content: rawText, isHtml: false }] }];
   }
