@@ -1351,20 +1351,101 @@ ${content}
 
   const MODULE_COLORS = ['#e8ecf1', '#d0e4dd', '#fef3dc', '#ebe0f5', '#fde2e2', '#d1ecf1', '#dff0d8', '#f5e6ca', '#e0e7ff'];
 
-  function loadModularView() {
+  async function loadModularView() {
     if (!lastDocText && !lastDocHtml) return;
 
-    const modules = parseTextIntoModules(lastDocText, lastDocHtml);
-    dashboard.innerHTML = '';
-
-    modules.forEach((mod, i) => {
-      dashboard.appendChild(buildModuleTile(mod.title, mod.items, i));
-    });
-
-    initDrag();
-    modularViewLoaded = true;
-    allCollapsed = true;
+    // Show loading
+    dashboard.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;"><div class="spinner" style="margin:0 auto 14px;"></div><p style="font-size:14px;color:var(--text-muted);">Generating modular analysis...</p></div>';
     dashboard.classList.add('active');
+
+    try {
+      const res = await fetch('/api/generate-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: truncateForAPI(lastDocText), fileName: lastFileName, fileType: lastFileType })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      // Convert AI response into module tiles with sub-items
+      dashboard.innerHTML = '';
+      const mods = data.modules || [];
+      mods.forEach((mod, i) => {
+        const items = buildItemsFromAIModule(mod);
+        const tile = buildModuleTile(mod.title || 'Untitled', items, i);
+        dashboard.appendChild(tile);
+      });
+
+      initDrag();
+      modularViewLoaded = true;
+      allCollapsed = true;
+    } catch (err) {
+      dashboard.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c0392b;"><strong>Error generating modular view</strong><p style="margin-top:8px;">${err.message}</p></div>`;
+    }
+  }
+
+  // Convert an AI module object into sub-item array for buildModuleTile
+  function buildItemsFromAIModule(mod) {
+    const items = [];
+    switch (mod.type) {
+      case 'items':
+        for (const it of (mod.items || [])) {
+          items.push({ label: it.label || 'Details', content: it.content || '', isHtml: true });
+        }
+        break;
+      case 'comparison':
+        const cols = mod.columns || [];
+        let tableHtml = '<table class="comparison-table"><thead><tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr></thead><tbody>';
+        for (const row of (mod.rows || [])) {
+          tableHtml += '<tr>' + row.map(cell => `<td>${esc(cell)}</td>`).join('') + '</tr>';
+        }
+        tableHtml += '</tbody></table>';
+        items.push({ label: 'Table', content: tableHtml, isHtml: true });
+        break;
+      case 'definitions':
+        for (const d of (mod.definitions || [])) {
+          items.push({ label: d.term || 'Term', content: d.meaning || '', isHtml: false });
+        }
+        break;
+      case 'steps':
+        for (const s of (mod.steps || [])) {
+          items.push({ label: `Step ${s.num}: ${s.title || ''}`, content: s.desc || '', isHtml: false });
+        }
+        break;
+      case 'milestones':
+        for (const m of (mod.milestones || [])) {
+          items.push({ label: m.pct || '', content: m.label || '', isHtml: false });
+        }
+        break;
+      case 'vetoList':
+        for (const v of (mod.vetoItems || [])) {
+          items.push({ label: 'Restriction', content: v, isHtml: false });
+        }
+        break;
+      case 'clauseList':
+        for (const c of (mod.clauseItems || [])) {
+          items.push({ label: 'Clause', content: c, isHtml: true });
+        }
+        break;
+      default:
+        if (mod.items) {
+          for (const it of mod.items) {
+            items.push({ label: it.label || 'Details', content: it.content || '', isHtml: true });
+          }
+        }
+    }
+    // Add alerts as sub-items
+    if (mod.alerts) {
+      for (const a of mod.alerts) {
+        items.push({ label: a.type === 'warn' ? 'Warning' : 'Note', content: a.text || '', isHtml: true });
+      }
+    }
+    return items.length > 0 ? items : [{ label: 'Details', content: 'No content', isHtml: false }];
   }
 
   // Build a module tile with draggable sub-items inside
