@@ -1334,7 +1334,7 @@ ${content}
 
   // Truncate text to stay under Vercel's 4.5MB body limit
   function truncateForAPI(text) {
-    const maxChars = 500000; // ~500KB of text, well under 4.5MB JSON limit
+    const maxChars = 200000; // ~200KB of text, safely under Vercel's 4.5MB body limit
     return text.length > maxChars ? text.substring(0, maxChars) : text;
   }
 

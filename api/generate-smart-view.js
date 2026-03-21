@@ -127,7 +127,9 @@ Analyze this document and create the Smart View insight cards.`;
     if (!response.ok) {
       const err = await response.text();
       console.error('Anthropic API error:', response.status, err);
-      return res.status(502).json({ error: `API error: ${response.status}` });
+      let detail = '';
+      try { detail = JSON.parse(err)?.error?.message || err; } catch { detail = err.substring(0, 200); }
+      return res.status(502).json({ error: `API error ${response.status}: ${detail}` });
     }
 
     const data = await response.json();

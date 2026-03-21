@@ -89,14 +89,11 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  if (!req.body) {
-    return res.status(400).json({ error: 'No request body. The document may be too large.' });
-  }
-
-  const { text, fileName, fileType } = req.body;
+  const body = req.body || {};
+  const { text, fileName, fileType } = body;
 
   if (!text || !text.trim()) {
-    return res.status(400).json({ error: 'No document text provided.' });
+    return res.status(400).json({ error: `No document text provided. Body keys: ${Object.keys(body).join(', ') || 'none'}. Body type: ${typeof req.body}` });
   }
 
   const maxChars = 100000;
@@ -125,7 +122,7 @@ Analyze the entire document above and return the analysis JSON.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 32000,
+        max_tokens: 8192,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }]
       })
@@ -134,7 +131,9 @@ Analyze the entire document above and return the analysis JSON.`;
     if (!response.ok) {
       const err = await response.text();
       console.error('Anthropic API error:', response.status, err);
-      return res.status(502).json({ error: `API error: ${response.status}` });
+      let detail = '';
+      try { detail = JSON.parse(err)?.error?.message || err; } catch { detail = err.substring(0, 200); }
+      return res.status(502).json({ error: `API error ${response.status}: ${detail}` });
     }
 
     const data = await response.json();
