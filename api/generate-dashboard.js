@@ -84,6 +84,32 @@ BLANK FIELDS: For blank fields, placeholders, or lines in the document, use: <sp
 
 OUTPUT: Return ONLY valid JSON. No markdown fences, no commentary, no trailing commas.`;
 
+// Attempt to repair truncated JSON by closing open brackets/braces
+function repairTruncatedJSON(str) {
+  // Remove any trailing incomplete string or value
+  let s = str.replace(/,\s*$/, '');
+  // Remove incomplete last key-value pair
+  s = s.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, '');
+  // Count open brackets and braces
+  let braces = 0, brackets = 0, inString = false, escape = false;
+  for (const ch of s) {
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') braces++;
+    if (ch === '}') braces--;
+    if (ch === '[') brackets++;
+    if (ch === ']') brackets--;
+  }
+  // Close any open strings
+  if (inString) s += '"';
+  // Close open brackets and braces
+  while (brackets > 0) { s += ']'; brackets--; }
+  while (braces > 0) { s += '}'; braces--; }
+  return JSON.parse(s);
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -122,7 +148,7 @@ Analyze the entire document above and return the analysis JSON.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
+        max_tokens: 16000,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }]
       })
@@ -145,12 +171,16 @@ Analyze the entire document above and return the analysis JSON.`;
     } catch {
       const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (match) {
-        json = JSON.parse(match[1]);
+        try { json = JSON.parse(match[1]); } catch { json = repairTruncatedJSON(match[1]); }
       } else {
         const start = raw.indexOf('{');
-        const end = raw.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-          json = JSON.parse(raw.substring(start, end + 1));
+        if (start !== -1) {
+          const jsonStr = raw.substring(start);
+          try {
+            json = JSON.parse(jsonStr);
+          } catch {
+            json = repairTruncatedJSON(jsonStr);
+          }
         } else {
           throw new Error('Could not parse AI response as JSON');
         }
