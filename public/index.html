@@ -1532,6 +1532,61 @@ ${content}
       currentItems = [];
     }
 
+    // Detect if a <p> is a section heading:
+    // - Entirely bold (all content inside <strong>/<b>)
+    // - Or starts with a number followed by bold text (e.g., "1. BACKGROUND")
+    // - Short enough to be a title (< 120 chars)
+    function isSectionHeading(node) {
+      const text = (node.textContent || '').trim();
+      if (!text || text.length > 120) return false;
+
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (tag !== 'p') return false;
+
+      // Check if entire paragraph is bold
+      const strongs = node.querySelectorAll('strong, b');
+      if (strongs.length > 0) {
+        const boldText = [...strongs].map(s => s.textContent).join('').trim();
+        const fullText = text;
+        // If bold text makes up most of the paragraph, it's a heading
+        if (boldText.length >= fullText.length * 0.8) return true;
+      }
+
+      // Check for numbered section patterns in bold: "1. TITLE" or "WORKSTREAM A"
+      const firstStrong = node.querySelector('strong, b');
+      if (firstStrong) {
+        const strongText = firstStrong.textContent.trim();
+        // Numbered heading: "1. Something" or "1 Something"
+        if (/^\d+\.?\s+/.test(strongText) && strongText.length < 100) return true;
+        // ALL CAPS bold heading
+        if (/^[A-Z][A-Z\s\-–—:&,]{4,}$/.test(strongText)) return true;
+        // "WORKSTREAM A" style
+        if (/^[A-Z\s]+[A-Z]$/.test(strongText) && strongText.length > 5) return true;
+      }
+
+      return false;
+    }
+
+    // Detect if a bold paragraph is a sub-heading (less prominent than a section heading)
+    function isSubHeading(node) {
+      const text = (node.textContent || '').trim();
+      if (!text || text.length > 100) return false;
+
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+      if (tag !== 'p') return false;
+
+      const firstStrong = node.querySelector('strong, b');
+      if (!firstStrong) return false;
+      const strongText = firstStrong.textContent.trim();
+
+      // Sub-numbered: "1.1 Something", "3.2.1 Something"
+      if (/^\d+\.\d+/.test(strongText)) return true;
+      // Lettered: "(a) Something", "a) Something"
+      if (/^(\([a-z]+\)|[a-z]\))\s+/i.test(strongText)) return true;
+
+      return false;
+    }
+
     for (const node of container.childNodes) {
       const tag = node.tagName ? node.tagName.toLowerCase() : '';
       const text = (node.textContent || '').trim();
@@ -1544,6 +1599,15 @@ ${content}
       }
       // H3-H6 = labeled sub-item
       else if (['h3', 'h4', 'h5', 'h6'].includes(tag)) {
+        currentItems.push({ label: text, content: '', isHtml: true });
+      }
+      // Bold paragraph acting as a section heading = new module
+      else if (isSectionHeading(node)) {
+        flushModule();
+        currentModTitle = text;
+      }
+      // Bold paragraph acting as sub-heading = labeled sub-item
+      else if (isSubHeading(node)) {
         currentItems.push({ label: text, content: '', isHtml: true });
       }
       // Table = its own sub-item
