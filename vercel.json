@@ -1,8 +1,6 @@
 {
-  "rewrites": [
-    { "source": "/api/generate-dashboard", "destination": "/api/generate-dashboard" },
-    { "source": "/api/generate-feedback", "destination": "/api/generate-feedback" }
-  ],
+  "buildCommand": "",
+  "outputDirectory": "public",
   "functions": {
     "api/generate-feedback.js": {
       "maxDuration": 120
