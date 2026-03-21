@@ -619,16 +619,31 @@
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      const pageText = content.items.map(it => it.str).join(' ');
-      text += `\n--- Page ${i} ---\n${pageText}\n`;
+      // Preserve structure by detecting line breaks via Y-position changes
+      let lastY = null;
+      let line = '';
+      const lines = [];
+      for (const item of content.items) {
+        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 2) {
+          lines.push(line.trim());
+          line = '';
+        }
+        line += item.str + ' ';
+        lastY = item.transform[5];
+      }
+      if (line.trim()) lines.push(line.trim());
+      text += `\n--- Page ${i} ---\n${lines.join('\n')}\n`;
     }
     return text;
   }
 
   async function parseDOCX(file) {
     const ab = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer: ab });
-    return result.value;
+    // Use convertToHtml to preserve headings, tables, lists structure
+    const htmlResult = await mammoth.convertToHtml({ arrayBuffer: ab });
+    const rawResult = await mammoth.extractRawText({ arrayBuffer: ab });
+    // Send both: HTML for structure hints, raw text for content
+    return `--- STRUCTURED HTML ---\n${htmlResult.value}\n\n--- RAW TEXT ---\n${rawResult.value}`;
   }
 
   async function parsePPTX(file) {
@@ -660,15 +675,19 @@
     let text = '';
     for (const name of wb.SheetNames) {
       const ws = wb.Sheets[name];
-      const csv = XLSX.utils.sheet_to_csv(ws);
-      const rows = csv.split('\n').filter(r => r.trim());
-      // For very large sheets, summarize
-      if (rows.length > 200) {
-        const header = rows.slice(0, 1).join('\n');
-        const sample = rows.slice(1, 21).join('\n');
-        text += `\n--- Sheet: ${name} (${rows.length} rows, showing first 20) ---\n${header}\n${sample}\n`;
-      } else {
-        text += `\n--- Sheet: ${name} ---\n${csv}\n`;
+      // Use JSON format to preserve column headers as keys
+      const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (jsonData.length === 0) continue;
+      const headerRow = jsonData[0];
+      const dataRows = jsonData.slice(1).filter(r => r.some(c => c !== ''));
+      // For very large sheets, cap at 200 rows
+      const displayRows = dataRows.length > 200 ? dataRows.slice(0, 200) : dataRows;
+      text += `\n--- Sheet: ${name} (${dataRows.length} data rows${dataRows.length > 200 ? ', showing first 200' : ''}) ---\n`;
+      text += `COLUMN HEADERS: ${headerRow.join(' | ')}\n`;
+      for (const row of displayRows) {
+        // Pair each value with its column header for clarity
+        const pairs = row.map((val, i) => `${headerRow[i] || 'Col' + (i+1)}: ${val}`);
+        text += pairs.join(' | ') + '\n';
       }
     }
     return text;
