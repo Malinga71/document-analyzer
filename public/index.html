@@ -529,6 +529,7 @@
   </div>
   <div class="header-actions">
     <button class="btn-secondary" onclick="toggleAll()">Collapse / Expand All</button>
+    <button class="btn-add" onclick="openAddModule()">+ Add Module</button>
     <button class="btn-secondary" onclick="exportHTML()">Export HTML</button>
     <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
     <button class="btn-secondary" onclick="resetToUpload()">Upload New</button>
@@ -556,24 +557,12 @@
   <div class="modal">
     <h3>Add New Module</h3>
     <label>Module Title</label>
-    <input type="text" id="newModTitle" placeholder="e.g. Risk Register">
-    <label>Category Tag</label>
-    <select id="newModTag"></select>
-    <label>Module Type</label>
-    <select id="newModType">
-      <option value="items">Items (default key-value)</option>
-      <option value="clauseList">Clause List</option>
-      <option value="vetoList">Restriction / Veto List</option>
-      <option value="definitions">Definitions Grid</option>
-      <option value="steps">Steps / Timeline</option>
-      <option value="milestones">Milestones</option>
-      <option value="comparison">Comparison Table</option>
-    </select>
-    <label>Initial Content (optional)</label>
-    <textarea id="newModContent" placeholder="First item content..."></textarea>
+    <input type="text" id="newModTitle" placeholder="e.g. Executive Summary">
+    <label>Content</label>
+    <textarea id="newModContent" placeholder="Enter module content..."></textarea>
     <div class="modal-footer">
-      <button class="btn-cancel" onclick="closeAddModal()">Cancel</button>
-      <button class="btn-create" onclick="createModule()">Create Module</button>
+      <button class="btn-cancel" onclick="closeAddModule()">Cancel</button>
+      <button class="btn-create" onclick="addNewModule()">Create Module</button>
     </div>
   </div>
 </div>
@@ -1080,37 +1069,34 @@
     });
   };
 
-  // ── Add module modal ──
-  window.openAddModal = function() { document.getElementById('addModal').classList.add('active'); };
-  window.closeAddModal = function() { document.getElementById('addModal').classList.remove('active'); };
-
-  window.createModule = function() {
-    const title = document.getElementById('newModTitle').value || 'Untitled Module';
-    const tagKey = document.getElementById('newModTag').value;
-    const type = document.getElementById('newModType').value;
-    const content = document.getElementById('newModContent').value;
-
-    const mod = {
-      id: 'mod_new_' + Date.now(), title, tag: tagKey, type,
-      fullWidth: type === 'comparison',
-    };
-
-    // Seed with initial content based on type
-    switch (type) {
-      case 'items': mod.items = content ? [{ label: 'Details', content }] : []; break;
-      case 'clauseList': mod.clauseItems = content ? [content] : []; mod.listColor = 'teal'; break;
-      case 'vetoList': mod.vetoItems = content ? [content] : []; break;
-      case 'definitions': mod.definitions = content ? [{ term: 'Term', meaning: content }] : []; break;
-      case 'steps': mod.steps = content ? [{ num: 1, color: 'teal', title: 'Step 1', desc: content }] : []; break;
-      case 'milestones': mod.milestones = content ? [{ pct: '0%', label: content }] : []; break;
-      case 'comparison': mod.columns = ['A', 'Dimension', 'B']; mod.rows = content ? [['—', content, '—']] : []; break;
+  // ── Add module ──
+  window.openAddModule = function() {
+    // Only works in Modular View
+    if (currentTab !== 'modular') {
+      switchTab('modular');
     }
+    document.getElementById('addModal').classList.add('active');
+  };
+  window.closeAddModule = function() { document.getElementById('addModal').classList.remove('active'); };
 
-    dashboard.appendChild(buildModule(mod));
+  window.addNewModule = function() {
+    const title = document.getElementById('newModTitle').value || 'Untitled Module';
+    const content = document.getElementById('newModContent').value || 'Click to edit...';
+    const colorIndex = document.querySelectorAll('.module').length;
+
+    const tile = buildModuleTile(title, content, false, colorIndex);
+    tile.classList.remove('collapsed'); // Show expanded so user can edit
+    const btn = tile.querySelector('.module-actions button');
+    if (btn) btn.textContent = '\u25BC';
+
+    dashboard.appendChild(tile);
     initDrag();
-    window.closeAddModal();
+    window.closeAddModule();
     document.getElementById('newModTitle').value = '';
     document.getElementById('newModContent').value = '';
+
+    // Scroll to the new module
+    tile.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   // ── Get the currently active view container ──
@@ -1358,35 +1344,16 @@ ${content}
     return text.length > maxChars ? text.substring(0, maxChars) : text;
   }
 
+  const MODULE_COLORS = ['#e8ecf1', '#d0e4dd', '#fef3dc', '#ebe0f5', '#fde2e2', '#d1ecf1', '#dff0d8', '#f5e6ca', '#e0e7ff'];
+
   function loadModularView() {
     if (!lastDocText && !lastDocHtml) return;
 
     const modules = parseTextIntoModules(lastDocText, lastDocHtml);
     dashboard.innerHTML = '';
 
-    const colors = ['#e8ecf1', '#d0e4dd', '#fef3dc', '#ebe0f5', '#fde2e2', '#d1ecf1', '#dff0d8', '#f5e6ca', '#e0e7ff'];
-
     modules.forEach((mod, i) => {
-      const color = colors[i % colors.length];
-      const el = document.createElement('div');
-      el.className = 'module collapsed';
-      el.draggable = true;
-
-      el.innerHTML = `
-        <div class="module-header" style="background:${color};">
-          <span class="drag-handle">&#x2630;</span>
-          <h2 contenteditable="true">${esc(mod.title)}</h2>
-          <div class="module-actions">
-            <button onclick="window._toggleCollapse(this)" title="Collapse">&#9654;</button>
-            <button class="btn-delete" onclick="window._deleteModule(this)" title="Delete">&#10005;</button>
-          </div>
-        </div>
-        <div class="module-body">
-          <div class="item">
-            <div class="item-content" contenteditable="true" style="white-space:pre-wrap;">${mod.html || esc(mod.content)}</div>
-          </div>
-        </div>`;
-      dashboard.appendChild(el);
+      dashboard.appendChild(buildModuleTile(mod.title, mod.html || mod.content, !!mod.html, i));
     });
 
     initDrag();
@@ -1395,61 +1362,113 @@ ${content}
     dashboard.classList.add('active');
   }
 
+  function buildModuleTile(title, content, isHtml, colorIndex) {
+    const color = MODULE_COLORS[(colorIndex || 0) % MODULE_COLORS.length];
+    const el = document.createElement('div');
+    el.className = 'module collapsed';
+    el.draggable = true;
+
+    const bodyContent = isHtml ? content : esc(content).replace(/\n/g, '<br>');
+
+    el.innerHTML = `
+      <div class="module-header" style="background:${color};">
+        <span class="drag-handle">&#x2630;</span>
+        <h2 contenteditable="true">${esc(title)}</h2>
+        <div class="module-actions">
+          <button onclick="window._toggleCollapse(this)" title="Collapse">&#9654;</button>
+          <button class="btn-delete" onclick="window._deleteModule(this)" title="Delete">&#10005;</button>
+        </div>
+      </div>
+      <div class="module-body">
+        <div class="item-content" contenteditable="true" style="font-size:13px;line-height:1.65;padding:4px 0;">${bodyContent}</div>
+      </div>`;
+    return el;
+  }
+
   // ── Static document parser — splits text into modules by headings/sections ──
   function parseTextIntoModules(rawText, htmlContent) {
-    const modules = [];
-
     // If we have HTML (from DOCX), parse by headings
     if (htmlContent) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString('<div>' + htmlContent + '</div>', 'text/html');
-      const container = doc.body.firstChild;
-      let currentTitle = 'Introduction';
-      let currentContent = [];
+      return parseHtmlIntoModules(htmlContent);
+    }
+    // For plain text / PDF / XLSX
+    return parseTextByHeadings(rawText);
+  }
 
-      for (const node of container.childNodes) {
-        const tag = node.tagName ? node.tagName.toLowerCase() : '';
-        if (['h1', 'h2', 'h3', 'h4'].includes(tag)) {
-          // Save previous section
-          if (currentContent.length > 0) {
-            modules.push({ title: currentTitle, html: currentContent.join('') });
-          }
-          currentTitle = node.textContent.trim() || 'Untitled Section';
-          currentContent = [];
-        } else if (tag === 'table') {
-          // Tables get their own module
-          if (currentContent.length > 0) {
-            modules.push({ title: currentTitle, html: currentContent.join('') });
-            currentContent = [];
-          }
-          const tableTitle = currentTitle + (modules.some(m => m.title === currentTitle) ? ' (Table)' : '');
-          modules.push({ title: tableTitle, html: node.outerHTML });
-          currentTitle = 'Continued';
+  function parseHtmlIntoModules(htmlContent) {
+    const modules = [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString('<div>' + htmlContent + '</div>', 'text/html');
+    const container = doc.body.firstChild;
+    let currentTitle = 'Introduction';
+    let currentContent = [];
+    let usedTitles = {};
+
+    function flushSection() {
+      const html = currentContent.join('').trim();
+      if (html) {
+        // Avoid duplicate titles
+        let title = currentTitle;
+        if (usedTitles[title]) {
+          usedTitles[title]++;
+          title = title + ' (' + usedTitles[title] + ')';
         } else {
-          const outerHTML = node.outerHTML || node.textContent;
-          if (outerHTML && outerHTML.trim()) currentContent.push(outerHTML);
+          usedTitles[title] = 1;
         }
+        modules.push({ title, html });
       }
-      if (currentContent.length > 0) {
-        modules.push({ title: currentTitle, html: currentContent.join('') });
-      }
-
-      return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', html: htmlContent }];
+      currentContent = [];
     }
 
-    // For plain text / PDF — split by common heading patterns
+    for (const node of container.childNodes) {
+      const tag = node.tagName ? node.tagName.toLowerCase() : '';
+
+      // Headings start new modules
+      if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+        flushSection();
+        currentTitle = node.textContent.trim() || 'Untitled Section';
+      }
+      // Tables get their own module
+      else if (tag === 'table') {
+        flushSection();
+        const tableTitle = currentTitle + ' – Table';
+        modules.push({ title: tableTitle, html: '<div style="overflow-x:auto;">' + node.outerHTML + '</div>' });
+        currentTitle = currentTitle + ' (continued)';
+      }
+      // Lists — keep with current section
+      else if (['ul', 'ol'].includes(tag)) {
+        currentContent.push(node.outerHTML);
+      }
+      // Paragraphs and other block elements
+      else {
+        const html = node.outerHTML || node.textContent;
+        if (html && html.trim()) currentContent.push(html);
+      }
+    }
+    flushSection();
+
+    return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', html: htmlContent }];
+  }
+
+  function parseTextByHeadings(rawText) {
+    const modules = [];
     const lines = rawText.split('\n');
     let currentTitle = lastFileName || 'Document';
     let currentLines = [];
 
-    // Patterns that indicate a new section
+    // Patterns that indicate a new section/heading
     const headingPatterns = [
-      /^---\s*(Page \d+|Sheet:.*|Slide \d+|CSV Content)\s*---$/i,  // Parser markers
-      /^#{1,4}\s+.+/,                                               // Markdown headings
-      /^[A-Z][A-Z\s]{4,}$/,                                         // ALL CAPS LINES (5+ chars)
-      /^\d+\.\s+[A-Z]/,                                             // Numbered sections: "1. Title"
-      /^(?:SECTION|ARTICLE|PART|CHAPTER|CLAUSE|SCHEDULE)\s+\d/i,    // Legal sections
-      /^[IVXLC]+\.\s+/,                                             // Roman numeral sections
+      { re: /^---\s*(Page \d+)\s*---$/i, extract: m => m[1] },
+      { re: /^---\s*(Sheet:.+)\s*---$/i, extract: m => m[1] },
+      { re: /^---\s*(Slide \d+)\s*---$/i, extract: m => m[1] },
+      { re: /^---\s*(CSV Content)\s*---$/i, extract: m => m[1] },
+      { re: /^#{1,4}\s+(.+)/, extract: m => m[1] },
+      { re: /^(\d+\.)\s+([A-Z].{2,})$/, extract: m => m[1] + ' ' + m[2] },
+      { re: /^(\d+\.\d+\.?)\s+(.{3,})$/, extract: m => m[1] + ' ' + m[2] },
+      { re: /^(SECTION|ARTICLE|PART|CHAPTER|CLAUSE|SCHEDULE|ANNEXURE|APPENDIX)\s+(.+)/i, extract: m => m[1] + ' ' + m[2] },
+      { re: /^([IVXLC]+\.)\s+(.+)/, extract: m => m[1] + ' ' + m[2] },
+      { re: /^[A-Z][A-Z\s\-&]{4,}$/, extract: m => m[0] },
+      { re: /^COLUMN HEADERS:\s*(.+)$/i, extract: m => 'Data: ' + m[1].split('|').slice(0, 3).map(s => s.trim()).join(', ') },
     ];
 
     for (const line of lines) {
@@ -1459,28 +1478,43 @@ ${content}
         continue;
       }
 
-      let isHeading = false;
-      for (const pattern of headingPatterns) {
-        if (pattern.test(trimmed)) {
-          isHeading = true;
+      let matched = false;
+      for (const { re, extract } of headingPatterns) {
+        const m = trimmed.match(re);
+        if (m) {
+          // Save previous section
+          if (currentLines.some(l => l.trim())) {
+            modules.push({ title: currentTitle, content: currentLines.join('\n').trim() });
+          }
+          currentTitle = extract(m);
+          currentLines = [];
+          matched = true;
           break;
         }
       }
 
-      if (isHeading) {
-        if (currentLines.some(l => l.trim())) {
-          modules.push({ title: currentTitle, content: currentLines.join('\n').trim() });
-        }
-        // Clean up the title
-        currentTitle = trimmed.replace(/^---\s*/, '').replace(/\s*---$/, '').replace(/^#+\s*/, '');
-        currentLines = [];
-      } else {
+      if (!matched) {
         currentLines.push(trimmed);
       }
     }
 
     if (currentLines.some(l => l.trim())) {
       modules.push({ title: currentTitle, content: currentLines.join('\n').trim() });
+    }
+
+    // If only 1 huge module, try splitting by double newlines
+    if (modules.length <= 1 && rawText.length > 500) {
+      const chunks = rawText.split(/\n\s*\n/).filter(c => c.trim());
+      if (chunks.length > 2) {
+        return chunks.map((chunk, i) => {
+          const lines = chunk.trim().split('\n');
+          const firstLine = lines[0].trim();
+          // Use first line as title if short enough, otherwise generic
+          const title = firstLine.length < 80 && firstLine.length > 2 ? firstLine : 'Section ' + (i + 1);
+          const content = firstLine.length < 80 ? lines.slice(1).join('\n').trim() || firstLine : chunk.trim();
+          return { title, content };
+        });
+      }
     }
 
     return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', content: rawText }];
