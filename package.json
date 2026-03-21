@@ -1,0 +1,14 @@
+{
+  "name": "document-dashboard-generator",
+  "version": "1.0.0",
+  "description": "Upload any document and generate an editable modular analysis",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5"
+  }
+}
+

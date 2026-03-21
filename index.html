@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Acorn Group Document Analyzer</title>
+
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs" type="module"></script>
+<!-- Mammoth (DOCX) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+<!-- JSZip (PPTX) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- SheetJS (XLSX) -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+<style>
+  :root {
+    --navy: #1a2332;
+    --teal: #5a8a7a;
+    --teal-light: #d0e4dd;
+    --orange: #f5a623;
+    --orange-light: #fef3dc;
+    --orange-bg: #f9a825;
+    --grey-bg: #f4f6f8;
+    --card-bg: #ffffff;
+    --border: #dce1e8;
+    --text: #1a2332;
+    --text-muted: #5f6b7a;
+    --danger: #e74c3c;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--grey-bg); color: var(--text); line-height: 1.55; }
+
+  /* ── Upload Screen ── */
+  .upload-screen {
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 40px;
+  }
+  .upload-logo { height: 60px; margin-bottom: 20px; }
+  .upload-screen h1 { font-size: 28px; margin-bottom: 6px; text-align: center; }
+  .upload-screen .tagline { color: var(--text-muted); font-size: 15px; margin-bottom: 36px; text-align: center; }
+
+  .dropzone {
+    width: 100%; max-width: 560px; padding: 60px 40px;
+    border: 2px dashed #b0b8c4; border-radius: 16px;
+    text-align: center; cursor: pointer; transition: .2s;
+    background: #fff;
+  }
+  .dropzone:hover, .dropzone.dragover { border-color: var(--orange); background: var(--orange-light); }
+  .dropzone .icon { font-size: 48px; margin-bottom: 14px; }
+  .dropzone p { font-size: 15px; color: var(--text-muted); }
+  .dropzone .formats { font-size: 12px; color: #a0a8b4; margin-top: 10px; }
+  .dropzone input { display: none; }
+
+  .input-divider {
+    display: flex; align-items: center; gap: 16px;
+    width: 100%; max-width: 560px; margin: 20px 0;
+    color: #a0a8b4; font-size: 13px; font-weight: 600;
+  }
+  .input-divider::before, .input-divider::after {
+    content: ''; flex: 1; height: 1px; background: #d0d5dd;
+  }
+  .text-input-area {
+    width: 100%; max-width: 560px;
+  }
+  .text-input-area textarea {
+    width: 100%; min-height: 140px; padding: 16px; border: 2px solid #d0d5dd;
+    border-radius: 12px; font-family: inherit; font-size: 14px; line-height: 1.5;
+    resize: vertical; background: #fff; color: var(--text); transition: .2s;
+  }
+  .text-input-area textarea:focus {
+    outline: none; border-color: var(--orange); box-shadow: 0 0 0 3px rgba(245,166,35,.15);
+  }
+  .text-input-area textarea::placeholder { color: #b0b8c4; }
+  .text-input-area button {
+    margin-top: 10px; width: 100%; padding: 12px;
+    border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+    background: var(--orange); color: var(--navy); cursor: pointer; transition: .15s;
+  }
+  .text-input-area button:hover { background: #e6991a; }
+  .text-input-area button:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── Loading ── */
+  .loading-screen {
+    min-height: 100vh; display: none; flex-direction: column;
+    align-items: center; justify-content: center; padding: 40px;
+  }
+  .loading-screen.active { display: flex; }
+  .spinner {
+    width: 48px; height: 48px; border: 4px solid var(--border);
+    border-top-color: var(--orange); border-radius: 50%;
+    animation: spin .8s linear infinite; margin-bottom: 20px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-screen .status { font-size: 16px; font-weight: 600; }
+  .loading-screen .substatus { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+
+  /* ── Error ── */
+  .error-box {
+    display: none; max-width: 500px; margin: 20px auto;
+    padding: 16px 20px; background: #fde8e8; border: 1px solid #f5a0a0;
+    border-radius: 10px; color: #9b2c2c; font-size: 14px; text-align: center;
+  }
+  .error-box.active { display: block; }
+  .error-box button {
+    margin-top: 12px; padding: 8px 20px; border: none; border-radius: 6px;
+    background: var(--navy); color: #fff; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+
+  /* ── Header ── */
+  .header {
+    background: var(--navy); color: #fff; padding: 24px 36px;
+    display: none; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 14px;
+  }
+  .header.active { display: flex; }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header h1[contenteditable="true"]:focus { outline: 2px solid var(--orange); border-radius: 3px; padding: 0 4px; }
+  .header .subtitle { font-size: 12px; color: #a0aec0; margin-top: 4px; }
+  .header .subtitle[contenteditable="true"]:focus { outline: 2px solid var(--orange); border-radius: 3px; padding: 0 4px; }
+  .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .header-actions button {
+    padding: 7px 16px; border: none; border-radius: 6px;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: .15s;
+  }
+  .btn-add { background: var(--orange); color: var(--navy); }
+  .btn-add:hover { background: #e6991a; }
+  .btn-secondary { background: rgba(255,255,255,.12); color: #fff; }
+  .btn-secondary:hover { background: rgba(255,255,255,.2); }
+
+  /* ── Dashboard ── */
+  .dashboard {
+    max-width: 1440px; margin: 0 auto;
+    padding: 24px 20px 60px;
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 20px;
+  }
+  .dashboard.active { display: grid; }
+  @media (max-width: 500px) { .dashboard { grid-template-columns: 1fr; padding: 14px; } }
+
+  /* ── Module ── */
+  .module {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    transition: box-shadow .2s, opacity .2s;
+  }
+  .module:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+  .module.dragging { opacity: .45; }
+  .module.drag-over { border: 2px dashed var(--orange); }
+  .module.full-width { grid-column: 1 / -1; }
+
+  .module-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 13px 16px; cursor: grab; user-select: none;
+  }
+  .module-header:active { cursor: grabbing; }
+  .drag-handle { color: #b0b8c4; font-size: 15px; flex-shrink: 0; }
+
+  .tag {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; padding: 2px 7px; border-radius: 4px; flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .clause-ref {
+    font-size: 10px; color: #6b7a8d; font-weight: 600;
+    background: rgba(0,0,0,.06); padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
+  }
+
+  .module-header h2 { flex: 1; font-size: 14px; font-weight: 700; }
+  .module-header h2[contenteditable="true"]:focus {
+    outline: 2px solid var(--orange); border-radius: 3px; padding: 0 4px;
+  }
+
+  .module-actions { display: flex; gap: 3px; flex-shrink: 0; }
+  .module-actions button {
+    background: none; border: none; cursor: pointer;
+    padding: 3px 5px; border-radius: 4px; font-size: 13px;
+    color: #8896a6; transition: .15s;
+  }
+  .module-actions button:hover { background: #eef1f5; color: var(--text); }
+  .module-actions .btn-delete:hover { color: var(--danger); background: #fde8e8; }
+
+  .module-body { padding: 0 16px 16px; overflow: hidden; transition: max-height .3s, padding .3s; }
+  .module.collapsed .module-body { max-height: 0 !important; padding-top: 0; padding-bottom: 0; }
+
+  /* ── Items ── */
+  .item {
+    background: var(--grey-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 11px 13px; margin-bottom: 8px;
+  }
+  .item:last-child { margin-bottom: 0; }
+  .item-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--text-muted); margin-bottom: 3px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .item-actions { display: flex; gap: 2px; }
+  .item-actions button, .cl-del, .veto-del {
+    background: none; border: none; cursor: pointer;
+    font-size: 11px; color: #a0a8b4; padding: 2px 4px; border-radius: 3px;
+  }
+  .item-actions button:hover, .cl-del:hover, .veto-del:hover { color: var(--danger); background: #fde8e8; }
+  .item-content { font-size: 13px; }
+  [contenteditable="true"]:focus {
+    outline: 2px solid var(--teal); border-radius: 3px; padding: 1px 3px; background: #fff;
+  }
+
+  .add-item-btn {
+    display: block; width: 100%; margin-top: 8px; padding: 7px;
+    border: 1px dashed #c4cdd8; background: none; border-radius: 6px;
+    color: var(--text-muted); font-size: 12px; cursor: pointer; transition: .15s;
+  }
+  .add-item-btn:hover { background: #eef1f5; color: var(--text); border-color: #a0aec0; }
+
+  /* ── Comparison table ── */
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .comparison-table th {
+    padding: 9px 10px; font-weight: 700; text-align: center;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+  }
+  .comparison-table td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: center;
+  }
+  .comparison-table tr:last-child td { border-bottom: none; }
+
+  /* ── Milestones ── */
+  .milestones { display: flex; flex-wrap: wrap; gap: 8px; }
+  .milestone {
+    flex: 1; min-width: 120px; text-align: center;
+    padding: 12px 8px; border-radius: 8px;
+    border: 2px solid var(--orange); background: var(--orange-light);
+  }
+  .milestone .pct { font-size: 22px; font-weight: 800; color: var(--orange-bg); }
+  .milestone .label { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+  /* ── Steps ── */
+  .steps { display: flex; flex-wrap: wrap; gap: 10px; }
+  .step {
+    flex: 1; min-width: 160px; background: var(--grey-bg);
+    border: 1px solid var(--border); border-radius: 8px; padding: 11px 13px;
+  }
+  .step-num {
+    display: inline-block; width: 22px; height: 22px; border-radius: 50%;
+    text-align: center; line-height: 22px; font-size: 11px; font-weight: 700;
+    color: #fff; margin-bottom: 6px;
+  }
+  .step-num.teal { background: var(--teal); }
+  .step-num.orange { background: var(--orange-bg); }
+  .step-title { font-weight: 700; font-size: 12px; margin-bottom: 3px; }
+  .step-desc { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Definitions ── */
+  .def-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  @media (max-width: 600px) { .def-grid { grid-template-columns: 1fr; } }
+  .def-card {
+    background: var(--grey-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px;
+  }
+  .def-term { font-weight: 700; font-size: 12px; margin-bottom: 2px; }
+  .def-meaning { font-size: 12px; color: var(--text-muted); }
+
+  /* ── Clause list ── */
+  .clause-list { padding-left: 0; list-style: none; }
+  .clause-list li {
+    padding: 7px 11px; border-left: 3px solid var(--teal);
+    margin-bottom: 5px; background: #f9fafb; border-radius: 0 6px 6px 0;
+    font-size: 13px; display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
+  }
+  .clause-list.orange li { border-left-color: var(--orange); }
+
+  /* ── Veto list ── */
+  .veto-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  @media (max-width: 500px) { .veto-list { grid-template-columns: 1fr; } }
+  .veto-item {
+    background: var(--grey-bg); border: 1px solid var(--border);
+    border-left: 3px solid var(--danger); border-radius: 6px;
+    padding: 9px 11px; font-size: 12px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
+  }
+
+  /* ── Alerts ── */
+  .alert {
+    padding: 9px 12px; border-radius: 6px; font-size: 12px;
+    margin-top: 8px; display: flex; align-items: flex-start; gap: 6px;
+  }
+  .alert-warn { background: #fef3dc; border: 1px solid #f5d88e; color: #7a5c00; }
+  .alert-info { background: #e8f0fe; border: 1px solid #a8c7f5; color: #1a4d8f; }
+
+  /* ── Blank fields ── */
+  .blank {
+    display: inline-block; min-width: 80px; border-bottom: 2px dashed #b0b8c4;
+    padding: 0 3px; color: #8896a6; font-style: italic;
+  }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 1000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #fff; border-radius: 12px; padding: 24px;
+    width: 90%; max-width: 460px; box-shadow: 0 20px 60px rgba(0,0,0,.2);
+  }
+  .modal h3 { margin-bottom: 14px; font-size: 17px; }
+  .modal label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 3px; color: var(--text-muted); }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 13px; margin-bottom: 12px; font-family: inherit;
+  }
+  .modal textarea { min-height: 70px; resize: vertical; }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .modal-footer button {
+    padding: 8px 18px; border: none; border-radius: 6px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .modal-footer .btn-cancel { background: #eef1f5; color: var(--text); }
+  .modal-footer .btn-create { background: var(--orange); color: var(--navy); }
+
+  /* ── Feedback modal ── */
+  .feedback-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.5); z-index: 1100;
+    align-items: center; justify-content: center;
+  }
+  .feedback-overlay.active { display: flex; }
+  .feedback-modal {
+    background: #fff; border-radius: 14px; padding: 0;
+    width: 92%; max-width: 680px; max-height: 85vh;
+    box-shadow: 0 24px 80px rgba(0,0,0,.25); display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .feedback-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 18px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .feedback-modal-header h3 { font-size: 17px; margin: 0; }
+  .feedback-modal-header button {
+    background: none; border: none; font-size: 20px; cursor: pointer;
+    color: var(--text-muted); padding: 4px 8px; border-radius: 6px;
+  }
+  .feedback-modal-header button:hover { background: #eef1f5; color: var(--text); }
+  .feedback-body {
+    padding: 24px; overflow-y: auto; flex: 1; font-size: 14px; line-height: 1.7;
+  }
+  .feedback-body h3 { font-size: 15px; margin: 18px 0 8px; }
+  .feedback-body h3:first-child { margin-top: 0; }
+  .feedback-body ul { padding-left: 20px; margin: 6px 0 12px; }
+  .feedback-body li { margin-bottom: 4px; }
+  .feedback-loading {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 60px 24px; text-align: center;
+  }
+  .feedback-loading .spinner { margin-bottom: 14px; }
+  .feedback-loading p { font-size: 14px; color: var(--text-muted); }
+  .btn-feedback { background: #4a90d9; color: #fff; }
+  .btn-feedback:hover { background: #3a7bc8; }
+  .feedback-modal-footer {
+    display: none; padding: 14px 24px; border-top: 1px solid var(--border);
+    gap: 8px; justify-content: flex-end; flex-shrink: 0;
+  }
+  .feedback-modal-footer.active { display: flex; }
+  .feedback-modal-footer button {
+    padding: 8px 18px; border: none; border-radius: 6px;
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: .15s;
+  }
+  .feedback-modal-footer .btn-copy { background: #eef1f5; color: var(--text); }
+  .feedback-modal-footer .btn-copy:hover { background: #dce1e8; }
+  .feedback-modal-footer .btn-copy.copied { background: #d0e4dd; color: #2d5f4f; }
+  .feedback-modal-footer .btn-export-fb { background: var(--navy); color: #fff; }
+  .feedback-modal-footer .btn-export-fb:hover { background: #253344; }
+
+  @media print {
+    .header-actions, .module-actions, .add-item-btn, .item-actions, .cl-del, .veto-del { display: none !important; }
+    .module { break-inside: avoid; }
+    .upload-screen, .loading-screen, .feedback-overlay { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════ UPLOAD SCREEN ══════ -->
+<div class="upload-screen" id="uploadScreen">
+  <img src="logo.jpeg" alt="Acorn 3.0" class="upload-logo">
+  <h1>Acorn Group Document Analyzer</h1>
+  <p class="tagline">Upload any document to generate an editable, modular analysis</p>
+  <div class="dropzone" id="dropzone">
+    <div class="icon">&#128196;</div>
+    <p>Drag & drop a file here, or click to browse</p>
+    <div class="formats">.pdf &nbsp; .docx &nbsp; .pptx &nbsp; .xlsx &nbsp; .xls &nbsp; .csv</div>
+    <input type="file" id="fileInput" accept=".pdf,.docx,.pptx,.ppt,.xlsx,.xls,.csv">
+  </div>
+  <div class="input-divider">OR</div>
+  <div class="text-input-area">
+    <textarea id="textInput" placeholder="Paste or type your document content here..."></textarea>
+    <button id="textSubmitBtn" onclick="handleTextInput()">Analyze Text</button>
+  </div>
+  <div class="error-box" id="errorBox">
+    <div id="errorMsg"></div>
+    <button onclick="resetToUpload()">Try Again</button>
+  </div>
+</div>
+
+<!-- ══════ LOADING SCREEN ══════ -->
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner"></div>
+  <div class="status" id="loadStatus">Parsing document...</div>
+  <div class="substatus" id="loadSubstatus"></div>
+</div>
+
+<!-- ══════ DASHBOARD HEADER ══════ -->
+<div class="header" id="dashHeader">
+  <div>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <img src="logo.jpeg" alt="Acorn 3.0" style="height:36px;">
+      <h1 contenteditable="true" id="dashTitle">Acorn Group Document Analyzer</h1>
+    </div>
+    <div class="subtitle" contenteditable="true" id="dashSubtitle"></div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-secondary" onclick="toggleAll()">Collapse / Expand All</button>
+    <button class="btn-feedback" onclick="requestFeedback()">Feedback</button>
+    <button class="btn-add" onclick="openAddModal()">+ Add Module</button>
+    <button class="btn-secondary" onclick="exportHTML()">Export HTML</button>
+    <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
+    <button class="btn-secondary" onclick="resetToUpload()">Upload New</button>
+  </div>
+</div>
+
+<!-- ══════ DASHBOARD ══════ -->
+<div class="dashboard" id="dashboard"></div>
+
+<!-- ══════ ADD MODULE MODAL ══════ -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h3>Add New Module</h3>
+    <label>Module Title</label>
+    <input type="text" id="newModTitle" placeholder="e.g. Risk Register">
+    <label>Category Tag</label>
+    <select id="newModTag"></select>
+    <label>Module Type</label>
+    <select id="newModType">
+      <option value="items">Items (default key-value)</option>
+      <option value="clauseList">Clause List</option>
+      <option value="vetoList">Restriction / Veto List</option>
+      <option value="definitions">Definitions Grid</option>
+      <option value="steps">Steps / Timeline</option>
+      <option value="milestones">Milestones</option>
+      <option value="comparison">Comparison Table</option>
+    </select>
+    <label>Initial Content (optional)</label>
+    <textarea id="newModContent" placeholder="First item content..."></textarea>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeAddModal()">Cancel</button>
+      <button class="btn-create" onclick="createModule()">Create Module</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ FEEDBACK MODAL ══════ -->
+<div class="feedback-overlay" id="feedbackOverlay">
+  <div class="feedback-modal">
+    <div class="feedback-modal-header">
+      <h3>Expert Feedback</h3>
+      <button onclick="closeFeedback()">&#10005;</button>
+    </div>
+    <div class="feedback-body" id="feedbackBody">
+      <div class="feedback-loading" id="feedbackLoading">
+        <div class="spinner"></div>
+        <p>Running expert panel analysis (3 perspectives)...</p>
+      </div>
+      <div id="feedbackContent" style="display:none;"></div>
+    </div>
+    <div class="feedback-modal-footer" id="feedbackFooter">
+      <button class="btn-copy" onclick="copyFeedback()">Copy to Clipboard</button>
+      <button class="btn-export-fb" onclick="exportFeedback()">Export as HTML</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  // ── PDF.js setup ──
+  let pdfjsLib = null;
+  try {
+    pdfjsLib = await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs';
+  } catch (e) {
+    console.warn('PDF.js failed to load:', e);
+  }
+
+  // ── State ──
+  let currentTags = {};
+  let allCollapsed = false;
+  let lastDocText = '';
+  let lastFileName = '';
+  let lastFileType = '';
+
+  // ── DOM refs ──
+  const uploadScreen = document.getElementById('uploadScreen');
+  const loadingScreen = document.getElementById('loadingScreen');
+  const dashHeader = document.getElementById('dashHeader');
+  const dashboard = document.getElementById('dashboard');
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const errorBox = document.getElementById('errorBox');
+  const errorMsg = document.getElementById('errorMsg');
+  const loadStatus = document.getElementById('loadStatus');
+  const loadSubstatus = document.getElementById('loadSubstatus');
+
+  // ── Upload handlers ──
+  dropzone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault(); dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  // ── Text input handler ──
+  window.handleTextInput = async function() {
+    const textInput = document.getElementById('textInput');
+    const text = textInput.value.trim();
+    if (!text || text.length < 20) {
+      showError('Please enter at least 20 characters of document content.');
+      return;
+    }
+
+    errorBox.classList.remove('active');
+    lastDocText = text;
+    lastFileName = 'Pasted Text';
+    lastFileType = 'text';
+
+    showLoading('Analyzing document...', 'AI is analyzing the content and structuring modules');
+
+    try {
+      const res = await fetch('/api/generate-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, fileName: 'Pasted Text', fileType: 'text' })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      renderDashboard(data);
+    } catch (err) {
+      showError(err.message);
+    }
+  };
+
+  // ── Main flow ──
+  async function handleFile(file) {
+    errorBox.classList.remove('active');
+    const ext = file.name.split('.').pop().toLowerCase();
+    const supported = ['pdf', 'docx', 'pptx', 'ppt', 'xlsx', 'xls', 'csv'];
+    if (!supported.includes(ext)) {
+      showError(`Unsupported file type: .${ext}. Supported: ${supported.join(', ')}`);
+      return;
+    }
+
+    showLoading('Parsing document...', file.name);
+
+    try {
+      let text;
+      switch (ext) {
+        case 'pdf': text = await parsePDF(file); break;
+        case 'docx': text = await parseDOCX(file); break;
+        case 'pptx': case 'ppt': text = await parsePPTX(file); break;
+        case 'xlsx': case 'xls': text = await parseXLSX(file); break;
+        case 'csv': text = await parseCSV(file); break;
+      }
+
+      if (!text || text.trim().length < 20) {
+        showError('Could not extract meaningful text from this document. The file may be image-only or empty.');
+        return;
+      }
+
+      lastDocText = text;
+      lastFileName = file.name;
+      lastFileType = ext;
+
+      setStatus('Analyzing document...', 'AI is analyzing the content and structuring modules');
+
+      const res = await fetch('/api/generate-dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, fileName: file.name, fileType: ext })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      renderDashboard(data);
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // ══════════════════════════════════
+  // PARSERS
+  // ══════════════════════════════════
+
+  async function parsePDF(file) {
+    if (!pdfjsLib) throw new Error('PDF.js library failed to load. Please refresh and try again.');
+    const ab = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(it => it.str).join(' ');
+      text += `\n--- Page ${i} ---\n${pageText}\n`;
+    }
+    return text;
+  }
+
+  async function parseDOCX(file) {
+    const ab = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer: ab });
+    return result.value;
+  }
+
+  async function parsePPTX(file) {
+    const ab = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(ab);
+    let text = '';
+    const slideFiles = Object.keys(zip.files)
+      .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+      .sort((a, b) => {
+        const na = parseInt(a.match(/slide(\d+)/)[1]);
+        const nb = parseInt(b.match(/slide(\d+)/)[1]);
+        return na - nb;
+      });
+    for (const sf of slideFiles) {
+      const num = sf.match(/slide(\d+)/)[1];
+      const xml = await zip.files[sf].async('text');
+      const doc = new DOMParser().parseFromString(xml, 'application/xml');
+      const tNodes = doc.getElementsByTagName('a:t');
+      let slideText = '';
+      for (const t of tNodes) slideText += t.textContent + ' ';
+      text += `\n--- Slide ${num} ---\n${slideText.trim()}\n`;
+    }
+    return text;
+  }
+
+  async function parseXLSX(file) {
+    const ab = await file.arrayBuffer();
+    const wb = XLSX.read(ab, { type: 'array' });
+    let text = '';
+    for (const name of wb.SheetNames) {
+      const ws = wb.Sheets[name];
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const rows = csv.split('\n').filter(r => r.trim());
+      // For very large sheets, summarize
+      if (rows.length > 200) {
+        const header = rows.slice(0, 1).join('\n');
+        const sample = rows.slice(1, 21).join('\n');
+        text += `\n--- Sheet: ${name} (${rows.length} rows, showing first 20) ---\n${header}\n${sample}\n`;
+      } else {
+        text += `\n--- Sheet: ${name} ---\n${csv}\n`;
+      }
+    }
+    return text;
+  }
+
+  async function parseCSV(file) {
+    const text = await file.text();
+    return `--- CSV Content ---\n${text}`;
+  }
+
+  // ══════════════════════════════════
+  // RENDER DASHBOARD
+  // ══════════════════════════════════
+
+  function renderDashboard(data) {
+    currentTags = data.tags || {};
+
+    document.getElementById('dashTitle').textContent = data.title || 'Acorn Group Document Analyzer';
+    document.getElementById('dashSubtitle').textContent = data.subtitle || '';
+
+    // Populate tag selector in modal
+    const tagSelect = document.getElementById('newModTag');
+    tagSelect.innerHTML = '';
+    for (const [key, val] of Object.entries(currentTags)) {
+      const opt = document.createElement('option');
+      opt.value = key; opt.textContent = val.label;
+      tagSelect.appendChild(opt);
+    }
+
+    dashboard.innerHTML = '';
+    for (const mod of (data.modules || [])) {
+      dashboard.appendChild(buildModule(mod));
+    }
+
+    uploadScreen.style.display = 'none';
+    loadingScreen.classList.remove('active');
+    dashHeader.classList.add('active');
+    dashboard.classList.add('active');
+    initDrag();
+
+    // Default to collapsed view
+    allCollapsed = true;
+    document.querySelectorAll('.module').forEach(m => {
+      m.classList.add('collapsed');
+      const btn = m.querySelector('.module-actions button');
+      if (btn) btn.textContent = '\u25B6';
+    });
+  }
+
+  function buildModule(mod) {
+    const tagInfo = currentTags[mod.tag] || { label: mod.tag || 'General', bg: '#e8ecf1', color: '#3d4a5c' };
+    const headerBg = tagInfo.bg || '#e8ecf1';
+
+    const el = document.createElement('div');
+    el.className = 'module' + (mod.fullWidth ? ' full-width' : '');
+    el.draggable = true;
+    el.dataset.type = mod.type || 'items';
+    el.dataset.tag = mod.tag || '';
+
+    el.innerHTML = `
+      <div class="module-header" style="background:${headerBg};">
+        <span class="drag-handle">&#x2630;</span>
+        <span class="tag" style="background:${tagInfo.bg};color:${tagInfo.color};">${tagInfo.label}</span>
+        ${mod.clauseRef ? `<span class="clause-ref">${esc(mod.clauseRef)}</span>` : ''}
+        <h2 contenteditable="true">${esc(mod.title)}</h2>
+        <div class="module-actions">
+          <button onclick="window._toggleCollapse(this)" title="Collapse">&#9660;</button>
+          <button class="btn-delete" onclick="window._deleteModule(this)" title="Delete">&#10005;</button>
+        </div>
+      </div>
+      <div class="module-body">${renderModuleBody(mod)}</div>`;
+    return el;
+  }
+
+  function renderModuleBody(mod) {
+    let html = '';
+    switch (mod.type) {
+      case 'comparison': html = renderComparison(mod); break;
+      case 'milestones': html = renderMilestones(mod); break;
+      case 'steps': html = renderSteps(mod); break;
+      case 'definitions': html = renderDefinitions(mod); break;
+      case 'vetoList': html = renderVetoList(mod); break;
+      case 'clauseList': html = renderClauseList(mod); break;
+      default: html = renderItems(mod);
+    }
+    // Alerts
+    if (mod.alerts && mod.alerts.length) {
+      for (const a of mod.alerts) {
+        const cls = a.type === 'warn' ? 'alert-warn' : 'alert-info';
+        const icon = a.type === 'warn' ? '&#9888;' : '&#9432;';
+        html += `<div class="alert ${cls}"><span>${icon}</span><span contenteditable="true">${a.text}</span></div>`;
+      }
+    }
+    // Add button
+    const btnLabel = {
+      items: '+ Add item', comparison: '+ Add row', milestones: '+ Add milestone',
+      steps: '+ Add step', definitions: '+ Add definition',
+      vetoList: '+ Add restriction', clauseList: '+ Add clause'
+    }[mod.type || 'items'] || '+ Add item';
+    html += `<button class="add-item-btn" onclick="window._addContent(this, '${mod.type || 'items'}')">${btnLabel}</button>`;
+    return html;
+  }
+
+  function renderItems(mod) {
+    return (mod.items || []).map(it => `
+      <div class="item">
+        <div class="item-label"><span contenteditable="true">${esc(it.label)}</span>
+          <div class="item-actions"><button onclick="window._deleteItem(this)">&#10005;</button></div>
+        </div>
+        <div class="item-content" contenteditable="true">${it.content || ''}</div>
+      </div>`).join('');
+  }
+
+  function renderComparison(mod) {
+    const cols = mod.columns || ['A', 'Dimension', 'B'];
+    let html = '<table class="comparison-table"><thead><tr>';
+    cols.forEach((c, i) => {
+      const bg = i === 0 ? 'var(--teal-light);color:#2d5f4f' :
+                 i === cols.length - 1 ? 'var(--orange-light);color:#8a5d00' :
+                 'var(--navy);color:#fff';
+      html += `<th style="background:${bg}">${esc(c)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    for (const row of (mod.rows || [])) {
+      html += '<tr>' + row.map((cell, i) => {
+        const style = i !== 0 && i !== row.length - 1 ? ' style="background:#f0f2f5;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted);"' : '';
+        return `<td contenteditable="true"${style}>${esc(cell)}</td>`;
+      }).join('') + '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+  }
+
+  function renderMilestones(mod) {
+    return '<div class="milestones">' + (mod.milestones || []).map(m => `
+      <div class="milestone">
+        <div class="pct" contenteditable="true">${esc(m.pct)}</div>
+        <div class="label" contenteditable="true">${esc(m.label)}</div>
+      </div>`).join('') + '</div>';
+  }
+
+  function renderSteps(mod) {
+    return '<div class="steps">' + (mod.steps || []).map(s => `
+      <div class="step">
+        <div class="step-num ${s.color || 'teal'}">${s.num}</div>
+        <div class="step-title" contenteditable="true">${esc(s.title)}</div>
+        <div class="step-desc" contenteditable="true">${esc(s.desc)}</div>
+      </div>`).join('') + '</div>';
+  }
+
+  function renderDefinitions(mod) {
+    return '<div class="def-grid">' + (mod.definitions || []).map(d => `
+      <div class="def-card">
+        <div class="def-term" contenteditable="true">${esc(d.term)}</div>
+        <div class="def-meaning" contenteditable="true">${esc(d.meaning)}</div>
+      </div>`).join('') + '</div>';
+  }
+
+  function renderVetoList(mod) {
+    return '<div class="veto-list">' + (mod.vetoItems || []).map(v => `
+      <div class="veto-item">
+        <span contenteditable="true">${esc(v)}</span>
+        <button class="veto-del" onclick="this.parentElement.remove()">&#10005;</button>
+      </div>`).join('') + '</div>';
+  }
+
+  function renderClauseList(mod) {
+    const cls = (mod.listColor === 'orange') ? ' orange' : '';
+    return `<ul class="clause-list${cls}">` + (mod.clauseItems || []).map(c => `
+      <li><span contenteditable="true">${c}</span>
+        <button class="cl-del" onclick="this.parentElement.remove()">&#10005;</button>
+      </li>`).join('') + '</ul>';
+  }
+
+  function esc(s) {
+    if (!s) return '';
+    const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+  }
+
+  // ══════════════════════════════════
+  // INTERACTIVITY (exposed to window)
+  // ══════════════════════════════════
+
+  window._toggleCollapse = function(btn) {
+    const mod = btn.closest('.module');
+    mod.classList.toggle('collapsed');
+    btn.textContent = mod.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+  };
+
+  window._deleteModule = function(btn) {
+    if (confirm('Remove this module?')) btn.closest('.module').remove();
+  };
+
+  window._deleteItem = function(btn) { btn.closest('.item').remove(); };
+
+  window._addContent = function(btn, type) {
+    const body = btn.closest('.module-body');
+    let el;
+    switch (type) {
+      case 'items':
+        el = document.createElement('div'); el.className = 'item';
+        el.innerHTML = `<div class="item-label"><span contenteditable="true">New Label</span><div class="item-actions"><button onclick="window._deleteItem(this)">&#10005;</button></div></div><div class="item-content" contenteditable="true">Click to edit...</div>`;
+        break;
+      case 'vetoList':
+        const vl = body.querySelector('.veto-list');
+        if (vl) { el = document.createElement('div'); el.className = 'veto-item'; el.innerHTML = `<span contenteditable="true">New restriction...</span><button class="veto-del" onclick="this.parentElement.remove()">&#10005;</button>`; vl.appendChild(el); } return;
+      case 'clauseList':
+        const ul = body.querySelector('.clause-list');
+        if (ul) { el = document.createElement('li'); el.innerHTML = `<span contenteditable="true"><strong>New:</strong> description</span><button class="cl-del" onclick="this.parentElement.remove()">&#10005;</button>`; ul.appendChild(el); } return;
+      case 'definitions':
+        const dg = body.querySelector('.def-grid');
+        if (dg) { el = document.createElement('div'); el.className = 'def-card'; el.innerHTML = `<div class="def-term" contenteditable="true">New Term</div><div class="def-meaning" contenteditable="true">Definition...</div>`; dg.appendChild(el); } return;
+      case 'milestones':
+        const ml = body.querySelector('.milestones');
+        if (ml) { el = document.createElement('div'); el.className = 'milestone'; el.innerHTML = `<div class="pct" contenteditable="true">0%</div><div class="label" contenteditable="true">New milestone</div>`; ml.appendChild(el); } return;
+      case 'steps':
+        const sl = body.querySelector('.steps');
+        if (sl) { const n = sl.children.length + 1; el = document.createElement('div'); el.className = 'step'; el.innerHTML = `<div class="step-num teal">${n}</div><div class="step-title" contenteditable="true">New Step</div><div class="step-desc" contenteditable="true">Description...</div>`; sl.appendChild(el); } return;
+      case 'comparison':
+        const tb = body.querySelector('.comparison-table tbody');
+        if (tb) { const cols = body.querySelector('.comparison-table thead tr').children.length; el = document.createElement('tr'); el.innerHTML = Array(cols).fill('<td contenteditable="true">—</td>').join(''); tb.appendChild(el); } return;
+      default:
+        el = document.createElement('div'); el.className = 'item';
+        el.innerHTML = `<div class="item-label"><span contenteditable="true">New Label</span><div class="item-actions"><button onclick="window._deleteItem(this)">&#10005;</button></div></div><div class="item-content" contenteditable="true">Click to edit...</div>`;
+    }
+    body.insertBefore(el, btn);
+  };
+
+  // ── Drag & Drop ──
+  let dragSrc = null;
+  function initDrag() {
+    document.querySelectorAll('.module').forEach(mod => {
+      mod.addEventListener('dragstart', e => { dragSrc = mod; mod.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+      mod.addEventListener('dragend', () => { mod.classList.remove('dragging'); document.querySelectorAll('.module').forEach(m => m.classList.remove('drag-over')); });
+      mod.addEventListener('dragover', e => { e.preventDefault(); mod.classList.add('drag-over'); });
+      mod.addEventListener('dragleave', () => mod.classList.remove('drag-over'));
+      mod.addEventListener('drop', e => {
+        e.preventDefault(); mod.classList.remove('drag-over');
+        if (dragSrc && dragSrc !== mod) {
+          const all = [...dashboard.children];
+          if (all.indexOf(dragSrc) < all.indexOf(mod)) mod.after(dragSrc); else mod.before(dragSrc);
+        }
+      });
+    });
+  }
+
+  // ── Collapse all ──
+  window.toggleAll = function() {
+    allCollapsed = !allCollapsed;
+    document.querySelectorAll('.module').forEach(m => {
+      if (allCollapsed) m.classList.add('collapsed'); else m.classList.remove('collapsed');
+      const btn = m.querySelector('.module-actions button');
+      if (btn) btn.textContent = allCollapsed ? '\u25B6' : '\u25BC';
+    });
+  };
+
+  // ── Add module modal ──
+  window.openAddModal = function() { document.getElementById('addModal').classList.add('active'); };
+  window.closeAddModal = function() { document.getElementById('addModal').classList.remove('active'); };
+
+  window.createModule = function() {
+    const title = document.getElementById('newModTitle').value || 'Untitled Module';
+    const tagKey = document.getElementById('newModTag').value;
+    const type = document.getElementById('newModType').value;
+    const content = document.getElementById('newModContent').value;
+
+    const mod = {
+      id: 'mod_new_' + Date.now(), title, tag: tagKey, type,
+      fullWidth: type === 'comparison',
+    };
+
+    // Seed with initial content based on type
+    switch (type) {
+      case 'items': mod.items = content ? [{ label: 'Details', content }] : []; break;
+      case 'clauseList': mod.clauseItems = content ? [content] : []; mod.listColor = 'teal'; break;
+      case 'vetoList': mod.vetoItems = content ? [content] : []; break;
+      case 'definitions': mod.definitions = content ? [{ term: 'Term', meaning: content }] : []; break;
+      case 'steps': mod.steps = content ? [{ num: 1, color: 'teal', title: 'Step 1', desc: content }] : []; break;
+      case 'milestones': mod.milestones = content ? [{ pct: '0%', label: content }] : []; break;
+      case 'comparison': mod.columns = ['A', 'Dimension', 'B']; mod.rows = content ? [['—', content, '—']] : []; break;
+    }
+
+    dashboard.appendChild(buildModule(mod));
+    initDrag();
+    window.closeAddModal();
+    document.getElementById('newModTitle').value = '';
+    document.getElementById('newModContent').value = '';
+  };
+
+  // ── Export HTML ──
+  window.exportHTML = function() {
+    const title = document.getElementById('dashTitle').textContent || 'Document Analysis';
+    const subtitle = document.getElementById('dashSubtitle').textContent || '';
+
+    // Expand all modules temporarily to capture full content
+    const wasCollapsed = [];
+    document.querySelectorAll('.module').forEach((m, i) => {
+      wasCollapsed[i] = m.classList.contains('collapsed');
+      m.classList.remove('collapsed');
+    });
+
+    // Clone dashboard content without action buttons
+    const clone = dashboard.cloneNode(true);
+    clone.querySelectorAll('.module-actions, .add-item-btn, .item-actions, .cl-del, .veto-del, .drag-handle').forEach(el => el.remove());
+    clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+
+    // Restore collapse state
+    document.querySelectorAll('.module').forEach((m, i) => {
+      if (wasCollapsed[i]) m.classList.add('collapsed');
+    });
+
+    // Get computed styles for the modules
+    const styles = document.querySelector('style').textContent;
+
+    const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${title}</title>
+<style>
+${styles}
+.header { display: flex !important; }
+.dashboard { display: grid !important; }
+.module-body { max-height: none !important; padding: 0 16px 16px !important; }
+.upload-screen, .loading-screen, .feedback-overlay, .modal-overlay { display: none !important; }
+body { background: #fff; }
+@media print { .module { break-inside: avoid; } }
+</style></head><body>
+<div class="header">
+  <div>
+    <h1>${title}</h1>
+    <div class="subtitle">${subtitle}</div>
+  </div>
+</div>
+${clone.outerHTML}
+</body></html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_')}.html`;
+    a.click();
+  };
+
+  // ── Export PDF ──
+  window.exportPDF = function() {
+    // Expand all modules so everything is visible in the PDF
+    const wasCollapsed = [];
+    document.querySelectorAll('.module').forEach((m, i) => {
+      wasCollapsed[i] = m.classList.contains('collapsed');
+      m.classList.remove('collapsed');
+    });
+
+    // Small delay to let the DOM update, then trigger print
+    setTimeout(() => {
+      window.print();
+      // Restore collapse state after print dialog closes
+      setTimeout(() => {
+        document.querySelectorAll('.module').forEach((m, i) => {
+          if (wasCollapsed[i]) m.classList.add('collapsed');
+        });
+      }, 500);
+    }, 100);
+  };
+
+  // ── Reset ──
+  window.resetToUpload = function() {
+    uploadScreen.style.display = 'flex';
+    loadingScreen.classList.remove('active');
+    dashHeader.classList.remove('active');
+    dashboard.classList.remove('active');
+    dashboard.innerHTML = '';
+    errorBox.classList.remove('active');
+    fileInput.value = '';
+    document.getElementById('textInput').value = '';
+  };
+
+  // ── Helpers ──
+  function showLoading(status, sub) {
+    uploadScreen.style.display = 'none';
+    loadingScreen.classList.add('active');
+    loadStatus.textContent = status;
+    loadSubstatus.textContent = sub || '';
+  }
+  function setStatus(status, sub) {
+    loadStatus.textContent = status;
+    loadSubstatus.textContent = sub || '';
+  }
+  function showError(msg) {
+    loadingScreen.classList.remove('active');
+    uploadScreen.style.display = 'flex';
+    errorMsg.textContent = msg;
+    errorBox.classList.add('active');
+  }
+
+  // ── Feedback ──
+  window.requestFeedback = async function() {
+    if (!lastDocText) return;
+    const overlay = document.getElementById('feedbackOverlay');
+    const loading = document.getElementById('feedbackLoading');
+    const content = document.getElementById('feedbackContent');
+    const footer = document.getElementById('feedbackFooter');
+
+    overlay.classList.add('active');
+    loading.style.display = 'flex';
+    content.style.display = 'none';
+    footer.classList.remove('active');
+
+    try {
+      const res = await fetch('/api/generate-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: lastDocText,
+          fileName: lastFileName,
+          fileType: lastFileType,
+          dashboardTitle: document.getElementById('dashTitle').textContent
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      content.innerHTML = data.feedback;
+      loading.style.display = 'none';
+      content.style.display = 'block';
+      footer.classList.add('active');
+    } catch (err) {
+      loading.style.display = 'none';
+      content.innerHTML = `<div style="color:#c0392b;text-align:center;padding:20px;"><strong>Error generating feedback</strong><p style="margin-top:8px;">${err.message}</p></div>`;
+      content.style.display = 'block';
+    }
+  };
+
+  window.closeFeedback = function() {
+    document.getElementById('feedbackOverlay').classList.remove('active');
+  };
+
+  window.copyFeedback = function() {
+    const content = document.getElementById('feedbackContent');
+    const text = content.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.querySelector('.feedback-modal-footer .btn-copy');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy to Clipboard'; btn.classList.remove('copied'); }, 2000);
+    });
+  };
+
+  window.exportFeedback = function() {
+    const content = document.getElementById('feedbackContent').innerHTML;
+    const title = document.getElementById('dashTitle').textContent || 'Document';
+    const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expert Feedback - ${title}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 24px; color: #1a2332; line-height: 1.7; }
+  h3 { margin: 24px 0 10px; font-size: 16px; }
+  ul { padding-left: 20px; margin: 8px 0 16px; }
+  li { margin-bottom: 6px; }
+  p { margin: 8px 0; }
+</style></head><body>
+<h1>Expert Feedback</h1>
+<p style="color:#5f6b7a;font-size:14px;">Document: ${title}</p>
+<hr style="border:none;border-top:1px solid #dce1e8;margin:20px 0;">
+${content}
+</body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'expert_feedback.html';
+    a.click();
+  };
+</script>
+</body>
+</html>
