@@ -9,30 +9,21 @@ function hashDocContent(text) {
   return crypto.createHash('sha256').update(text.trim()).digest('hex');
 }
 
-async function callFeedbackAPI(systemPrompt, userMessage) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }]
-    })
-  });
+const feedbackSystemPrompt = `You are tasked with reviewing a document. First, identify the subject area of the document (e.g., legal contract, financial report, technical specification, academic paper, business proposal, medical document, etc.). Then adopt the role of a senior expert in that specific domain.
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`API error: ${response.status} — ${err}`);
-  }
+Provide a thorough, professional review of the document with:
 
-  const data = await response.json();
-  return data.content?.[0]?.text || '';
-}
+1. **Document Type & Your Expert Role**: Briefly state what type of document this is and what expert perspective you are adopting (e.g., "As a senior corporate attorney reviewing this shareholder agreement..." or "As a senior data engineer reviewing this technical specification...").
+
+2. **Strengths**: What the document does well (2-4 points).
+
+3. **Areas for Improvement**: Specific, actionable feedback on weaknesses, gaps, ambiguities, or risks (3-6 points). Be concrete — reference specific sections or content where possible.
+
+4. **Critical Issues** (if any): Flag anything that could cause serious problems — legal risks, factual errors, missing essential elements, compliance concerns, etc.
+
+5. **Overall Assessment**: A brief summary rating (Strong / Adequate / Needs Work) with a one-line justification.
+
+Format your response in clean HTML using <h3>, <p>, <ul>, <li>, <strong>, and <span style="..."> tags for structure and emphasis. Use color accents: green (#2d7a4f) for strengths, orange (#c47a15) for improvements, red (#c0392b) for critical issues. Do NOT use markdown. Return ONLY the HTML content, no wrapping tags like <html> or <body>.`;
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -58,87 +49,45 @@ module.exports = async function handler(req, res) {
     return res.json({ feedback: feedbackCache.get(contentHash) });
   }
 
-  const docContext = `File: "${fileName}" (${fileType})\nDocument Title: "${dashboardTitle}"\n\n--- DOCUMENT CONTENT ---\n${docText}\n--- END ---`;
+  const userMessage = `File: "${fileName}" (${fileType})
+Document Title: "${dashboardTitle}"
 
-  const perspectives = [
-    {
-      system: `You are a senior domain expert reviewing a document. First, identify the subject area (legal, financial, technical, academic, business, medical, etc.) and adopt the role of the most relevant senior expert.
+--- DOCUMENT CONTENT ---
+${docText}
+--- END ---
 
-Focus your review on SUBSTANCE AND CONTENT quality:
-- Is the content accurate, complete, and well-structured?
-- Are there factual errors, logical gaps, or missing critical elements?
-- Are terms, definitions, and obligations clearly stated?
-- Does the document achieve its apparent purpose effectively?
-
-Format your response in clean HTML using <h3>, <p>, <ul>, <li>, <strong>, and <span style="..."> tags. Use color accents: green (#2d7a4f) for strengths, orange (#c47a15) for improvements, red (#c0392b) for critical issues. Return ONLY HTML content.`
-    },
-    {
-      system: `You are a senior risk and compliance analyst reviewing a document. First, identify the document type and adopt the perspective of a risk/compliance expert in that specific domain.
-
-Focus your review on RISKS AND COMPLIANCE:
-- Legal exposure, regulatory compliance gaps, or liability concerns
-- Ambiguous language that could be exploited or misinterpreted
-- Missing protections, safeguards, or standard clauses expected in this type of document
-- Enforceability issues, jurisdiction concerns, or procedural gaps
-
-Format your response in clean HTML using <h3>, <p>, <ul>, <li>, <strong>, and <span style="..."> tags. Use color accents: green (#2d7a4f) for strengths, orange (#c47a15) for improvements, red (#c0392b) for critical issues. Return ONLY HTML content.`
-    },
-    {
-      system: `You are a senior professional editor and strategic advisor reviewing a document. First, identify the document type and adopt the perspective of an editorial and strategic expert in that domain.
-
-Focus your review on CLARITY, STRATEGY, AND BEST PRACTICES:
-- Writing quality: clarity, conciseness, professional tone, consistency
-- Strategic positioning: does the document serve the interests of the parties appropriately?
-- Industry best practices: how does this compare to best-in-class documents of this type?
-- Practical recommendations: specific, actionable improvements with examples where possible
-
-Format your response in clean HTML using <h3>, <p>, <ul>, <li>, <strong>, and <span style="..."> tags. Use color accents: green (#2d7a4f) for strengths, orange (#c47a15) for improvements, red (#c0392b) for critical issues. Return ONLY HTML content.`
-    }
-  ];
+Please review this document as a domain expert.`;
 
   try {
-    console.log('Running 3 parallel feedback analyses for hash:', contentHash.substring(0, 12));
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        system: feedbackSystemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
 
-    const reviewPromises = perspectives.map(p =>
-      callFeedbackAPI(p.system, `${docContext}\n\nPlease review this document from your expert perspective.`)
-    );
-    const reviews = await Promise.all(reviewPromises);
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('Anthropic API error:', response.status, err);
+      return res.status(502).json({ error: `API error: ${response.status}` });
+    }
 
-    console.log('Synthesizing 3 reviews into final feedback...');
+    const data = await response.json();
+    const feedback = data.content?.[0]?.text || '';
 
-    const synthesisPrompt = `You are a senior editorial synthesizer. You have received THREE independent expert reviews of the same document. Your job is to produce ONE final, authoritative, high-quality review that:
-
-1. Combines the best insights from all three reviews — do not lose any important point
-2. Eliminates redundancy — merge overlapping observations into single, stronger points
-3. Prioritizes by impact — lead with the most critical findings
-4. Maintains a clear structure with these sections:
-   - **Document Type & Expert Panel**: Briefly state the document type and note that this review synthesizes multiple expert perspectives
-   - **Key Strengths** (3-5 consolidated points)
-   - **Areas for Improvement** (4-8 consolidated, actionable points — be specific, reference sections)
-   - **Critical Issues** (if any — only truly serious concerns that appeared across reviews or are high-severity)
-   - **Overall Assessment**: A rating (Strong / Adequate / Needs Work) with a 2-3 line justification
-
-Format in clean HTML using <h3>, <p>, <ul>, <li>, <strong>, and <span style="..."> tags.
-Use color accents: green (#2d7a4f) for strengths, orange (#c47a15) for improvements, red (#c0392b) for critical issues.
-Do NOT use markdown. Return ONLY the HTML content, no wrapping tags.`;
-
-    const synthesisInput = `--- REVIEW 1 (Content & Substance Expert) ---
-${reviews[0]}
-
---- REVIEW 2 (Risk & Compliance Expert) ---
-${reviews[1]}
-
---- REVIEW 3 (Clarity & Strategy Expert) ---
-${reviews[2]}
-
-Synthesize these three reviews into one final, comprehensive, high-quality review.`;
-
-    const finalFeedback = await callFeedbackAPI(synthesisPrompt, synthesisInput);
-
-    feedbackCache.set(contentHash, finalFeedback);
+    // Cache the result
+    feedbackCache.set(contentHash, feedback);
     console.log('Feedback cached for hash:', contentHash.substring(0, 12));
 
-    res.json({ feedback: finalFeedback });
+    res.json({ feedback });
   } catch (err) {
     console.error('Feedback error:', err.message);
     res.status(500).json({ error: err.message });
