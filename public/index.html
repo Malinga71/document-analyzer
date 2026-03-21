@@ -528,6 +528,7 @@
     <div class="subtitle" contenteditable="true" id="dashSubtitle"></div>
   </div>
   <div class="header-actions">
+    <button class="btn-secondary" onclick="toggleAll()">Collapse / Expand All</button>
     <button class="btn-secondary" onclick="exportHTML()">Export HTML</button>
     <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
     <button class="btn-secondary" onclick="resetToUpload()">Upload New</button>
@@ -1065,9 +1066,16 @@
   // ── Collapse all ──
   window.toggleAll = function() {
     allCollapsed = !allCollapsed;
+    // Toggle modules in modular view
     document.querySelectorAll('.module').forEach(m => {
       if (allCollapsed) m.classList.add('collapsed'); else m.classList.remove('collapsed');
       const btn = m.querySelector('.module-actions button');
+      if (btn) btn.textContent = allCollapsed ? '\u25B6' : '\u25BC';
+    });
+    // Toggle cards in insights view
+    document.querySelectorAll('.smart-card').forEach(c => {
+      if (allCollapsed) c.classList.add('collapsed'); else c.classList.remove('collapsed');
+      const btn = c.querySelector('.collapse-btn');
       if (btn) btn.textContent = allCollapsed ? '\u25B6' : '\u25BC';
     });
   };
@@ -1105,47 +1113,55 @@
     document.getElementById('newModContent').value = '';
   };
 
+  // ── Get the currently active view container ──
+  function getActiveViewContainer() {
+    if (currentTab === 'original') return document.getElementById('originalView');
+    if (currentTab === 'modular') return dashboard;
+    if (currentTab === 'insights') return document.getElementById('smartDashboard');
+    return dashboard;
+  }
+
   // ── Export HTML ──
   window.exportHTML = function() {
-    const title = document.getElementById('dashTitle').textContent || 'Document Analysis';
+    const title = document.getElementById('dashTitle').textContent || 'Document';
     const subtitle = document.getElementById('dashSubtitle').textContent || '';
+    const viewName = currentTab === 'original' ? 'Original' : currentTab === 'modular' ? 'Modular' : 'Insights';
+    const container = getActiveViewContainer();
 
-    // Expand all modules temporarily to capture full content
-    const wasCollapsed = [];
-    document.querySelectorAll('.module').forEach((m, i) => {
-      wasCollapsed[i] = m.classList.contains('collapsed');
-      m.classList.remove('collapsed');
-    });
+    // Expand all collapsed items temporarily
+    const collapsedModules = container.querySelectorAll('.module.collapsed, .smart-card.collapsed');
+    collapsedModules.forEach(m => m.classList.remove('collapsed'));
 
-    // Clone dashboard content without action buttons
-    const clone = dashboard.cloneNode(true);
-    clone.querySelectorAll('.module-actions, .add-item-btn, .item-actions, .cl-del, .veto-del, .drag-handle').forEach(el => el.remove());
+    // Clone content without action buttons
+    const clone = container.cloneNode(true);
+    clone.querySelectorAll('.module-actions, .add-item-btn, .item-actions, .cl-del, .veto-del, .drag-handle, .collapse-btn').forEach(el => el.remove());
     clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+    clone.querySelectorAll('[onclick]').forEach(el => el.removeAttribute('onclick'));
 
     // Restore collapse state
-    document.querySelectorAll('.module').forEach((m, i) => {
-      if (wasCollapsed[i]) m.classList.add('collapsed');
-    });
+    collapsedModules.forEach(m => m.classList.add('collapsed'));
 
-    // Get computed styles for the modules
     const styles = document.querySelector('style').textContent;
 
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title}</title>
+<title>${title} - ${viewName} View</title>
 <style>
 ${styles}
 .header { display: flex !important; }
+.dashboard, .smart-dashboard, .original-view { display: block !important; }
 .dashboard { display: grid !important; }
-.module-body { max-height: none !important; padding: 0 16px 16px !important; }
-.upload-screen, .loading-screen, .feedback-overlay, .modal-overlay { display: none !important; }
+.smart-dashboard { display: grid !important; }
+.module-body, .smart-card-body { max-height: none !important; padding: 0 16px 16px !important; }
+.module, .smart-card { height: auto !important; }
+.upload-screen, .loading-screen, .feedback-overlay, .modal-overlay, .tab-bar { display: none !important; }
 body { background: #fff; }
-@media print { .module { break-inside: avoid; } }
+@media print { .module, .smart-card { break-inside: avoid; } }
 </style></head><body>
 <div class="header">
   <div>
     <h1>${title}</h1>
-    <div class="subtitle">${subtitle}</div>
+    <div class="subtitle">${subtitle} (${viewName} View)</div>
   </div>
 </div>
 ${clone.outerHTML}
@@ -1154,27 +1170,31 @@ ${clone.outerHTML}
     const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_')}.html`;
+    a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_')}_${viewName}.html`;
     a.click();
   };
 
   // ── Export PDF ──
   window.exportPDF = function() {
-    // Expand all modules so everything is visible in the PDF
-    const wasCollapsed = [];
-    document.querySelectorAll('.module').forEach((m, i) => {
-      wasCollapsed[i] = m.classList.contains('collapsed');
-      m.classList.remove('collapsed');
-    });
+    const container = getActiveViewContainer();
 
-    // Small delay to let the DOM update, then trigger print
+    // Expand all collapsed items
+    const collapsedItems = container.querySelectorAll('.module.collapsed, .smart-card.collapsed');
+    collapsedItems.forEach(m => m.classList.remove('collapsed'));
+
+    // Hide other views temporarily for clean print
+    const allViews = [document.getElementById('originalView'), dashboard, document.getElementById('smartDashboard')];
+    const wasActive = allViews.map(v => v.classList.contains('active'));
+    allViews.forEach(v => v.classList.remove('active'));
+    container.classList.add('active');
+
     setTimeout(() => {
       window.print();
-      // Restore collapse state after print dialog closes
       setTimeout(() => {
-        document.querySelectorAll('.module').forEach((m, i) => {
-          if (wasCollapsed[i]) m.classList.add('collapsed');
-        });
+        // Restore collapse state
+        collapsedItems.forEach(m => m.classList.add('collapsed'));
+        // Restore view visibility
+        allViews.forEach((v, i) => { if (wasActive[i]) v.classList.add('active'); else v.classList.remove('active'); });
       }, 500);
     }, 100);
   };
@@ -1338,31 +1358,132 @@ ${content}
     return text.length > maxChars ? text.substring(0, maxChars) : text;
   }
 
-  async function loadModularView() {
-    if (!lastDocText) return;
+  function loadModularView() {
+    if (!lastDocText && !lastDocHtml) return;
 
-    // Show loading in the dashboard area
-    dashboard.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px 20px;"><div class="spinner" style="margin:0 auto 14px;"></div><p style="font-size:14px;color:var(--text-muted);">Generating modular analysis...</p></div>';
+    const modules = parseTextIntoModules(lastDocText, lastDocHtml);
+    dashboard.innerHTML = '';
+
+    const colors = ['#e8ecf1', '#d0e4dd', '#fef3dc', '#ebe0f5', '#fde2e2', '#d1ecf1', '#dff0d8', '#f5e6ca', '#e0e7ff'];
+
+    modules.forEach((mod, i) => {
+      const color = colors[i % colors.length];
+      const el = document.createElement('div');
+      el.className = 'module collapsed';
+      el.draggable = true;
+
+      el.innerHTML = `
+        <div class="module-header" style="background:${color};">
+          <span class="drag-handle">&#x2630;</span>
+          <h2 contenteditable="true">${esc(mod.title)}</h2>
+          <div class="module-actions">
+            <button onclick="window._toggleCollapse(this)" title="Collapse">&#9654;</button>
+            <button class="btn-delete" onclick="window._deleteModule(this)" title="Delete">&#10005;</button>
+          </div>
+        </div>
+        <div class="module-body">
+          <div class="item">
+            <div class="item-content" contenteditable="true" style="white-space:pre-wrap;">${mod.html || esc(mod.content)}</div>
+          </div>
+        </div>`;
+      dashboard.appendChild(el);
+    });
+
+    initDrag();
+    modularViewLoaded = true;
+    allCollapsed = true;
     dashboard.classList.add('active');
+  }
 
-    try {
-      const res = await fetch('/api/generate-dashboard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: truncateForAPI(lastDocText), fileName: lastFileName, fileType: lastFileType })
-      });
+  // ── Static document parser — splits text into modules by headings/sections ──
+  function parseTextIntoModules(rawText, htmlContent) {
+    const modules = [];
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `Server error: ${res.status}`);
+    // If we have HTML (from DOCX), parse by headings
+    if (htmlContent) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString('<div>' + htmlContent + '</div>', 'text/html');
+      const container = doc.body.firstChild;
+      let currentTitle = 'Introduction';
+      let currentContent = [];
+
+      for (const node of container.childNodes) {
+        const tag = node.tagName ? node.tagName.toLowerCase() : '';
+        if (['h1', 'h2', 'h3', 'h4'].includes(tag)) {
+          // Save previous section
+          if (currentContent.length > 0) {
+            modules.push({ title: currentTitle, html: currentContent.join('') });
+          }
+          currentTitle = node.textContent.trim() || 'Untitled Section';
+          currentContent = [];
+        } else if (tag === 'table') {
+          // Tables get their own module
+          if (currentContent.length > 0) {
+            modules.push({ title: currentTitle, html: currentContent.join('') });
+            currentContent = [];
+          }
+          const tableTitle = currentTitle + (modules.some(m => m.title === currentTitle) ? ' (Table)' : '');
+          modules.push({ title: tableTitle, html: node.outerHTML });
+          currentTitle = 'Continued';
+        } else {
+          const outerHTML = node.outerHTML || node.textContent;
+          if (outerHTML && outerHTML.trim()) currentContent.push(outerHTML);
+        }
+      }
+      if (currentContent.length > 0) {
+        modules.push({ title: currentTitle, html: currentContent.join('') });
       }
 
-      const data = await res.json();
-      renderDashboard(data);
-      dashboard.classList.add('active');
-    } catch (err) {
-      dashboard.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c0392b;"><strong>Error generating modular view</strong><p style="margin-top:8px;">${err.message}</p></div>`;
+      return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', html: htmlContent }];
     }
+
+    // For plain text / PDF — split by common heading patterns
+    const lines = rawText.split('\n');
+    let currentTitle = lastFileName || 'Document';
+    let currentLines = [];
+
+    // Patterns that indicate a new section
+    const headingPatterns = [
+      /^---\s*(Page \d+|Sheet:.*|Slide \d+|CSV Content)\s*---$/i,  // Parser markers
+      /^#{1,4}\s+.+/,                                               // Markdown headings
+      /^[A-Z][A-Z\s]{4,}$/,                                         // ALL CAPS LINES (5+ chars)
+      /^\d+\.\s+[A-Z]/,                                             // Numbered sections: "1. Title"
+      /^(?:SECTION|ARTICLE|PART|CHAPTER|CLAUSE|SCHEDULE)\s+\d/i,    // Legal sections
+      /^[IVXLC]+\.\s+/,                                             // Roman numeral sections
+    ];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        currentLines.push('');
+        continue;
+      }
+
+      let isHeading = false;
+      for (const pattern of headingPatterns) {
+        if (pattern.test(trimmed)) {
+          isHeading = true;
+          break;
+        }
+      }
+
+      if (isHeading) {
+        if (currentLines.some(l => l.trim())) {
+          modules.push({ title: currentTitle, content: currentLines.join('\n').trim() });
+        }
+        // Clean up the title
+        currentTitle = trimmed.replace(/^---\s*/, '').replace(/\s*---$/, '').replace(/^#+\s*/, '');
+        currentLines = [];
+      } else {
+        currentLines.push(trimmed);
+      }
+    }
+
+    if (currentLines.some(l => l.trim())) {
+      modules.push({ title: currentTitle, content: currentLines.join('\n').trim() });
+    }
+
+    return modules.length > 0 ? modules : [{ title: lastFileName || 'Document', content: rawText }];
   }
 
   async function loadSmartView() {
