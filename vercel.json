@@ -7,6 +7,9 @@
     },
     "api/generate-dashboard.js": {
       "maxDuration": 120
+    },
+    "api/generate-smart-view.js": {
+      "maxDuration": 120
     }
   }
 }

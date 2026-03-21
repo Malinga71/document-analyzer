@@ -359,6 +359,57 @@
   .feedback-loading p { font-size: 14px; color: var(--text-muted); }
   .btn-feedback { background: #4a90d9; color: #fff; }
   .btn-feedback:hover { background: #3a7bc8; }
+
+  /* ── View toggle ── */
+  .view-toggle {
+    display: none; justify-content: center; gap: 0;
+    max-width: 1440px; margin: 16px auto 0; padding: 0 20px;
+  }
+  .view-toggle.active { display: flex; }
+  .view-toggle button {
+    padding: 10px 28px; border: 2px solid var(--navy); font-size: 13px;
+    font-weight: 700; cursor: pointer; transition: .15s; background: #fff; color: var(--navy);
+  }
+  .view-toggle button:first-child { border-radius: 8px 0 0 8px; border-right: 1px solid var(--navy); }
+  .view-toggle button:last-child { border-radius: 0 8px 8px 0; border-left: 1px solid var(--navy); }
+  .view-toggle button.active { background: var(--navy); color: #fff; }
+  .view-toggle button:hover:not(.active) { background: #eef1f5; }
+
+  /* ── Smart View ── */
+  .smart-dashboard {
+    max-width: 1440px; margin: 0 auto;
+    padding: 24px 20px 60px;
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 20px;
+  }
+  .smart-dashboard.active { display: grid; }
+  @media (max-width: 500px) { .smart-dashboard { grid-template-columns: 1fr; padding: 14px; } }
+
+  .smart-loading {
+    display: none; grid-column: 1 / -1; text-align: center; padding: 60px 20px;
+  }
+  .smart-loading.active { display: block; }
+  .smart-loading .spinner { margin: 0 auto 14px; }
+  .smart-loading p { font-size: 14px; color: var(--text-muted); }
+
+  .smart-card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    transition: box-shadow .2s;
+  }
+  .smart-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+  .smart-card.full-width { grid-column: 1 / -1; }
+  .smart-card-header {
+    padding: 14px 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .smart-card-header h2 { flex: 1; font-size: 14px; font-weight: 700; }
+  .smart-card-header .smart-icon { font-size: 18px; flex-shrink: 0; }
+  .smart-card-body { padding: 0 16px 16px; font-size: 13px; line-height: 1.65; }
+  .smart-card-body ul { padding-left: 18px; margin: 6px 0; }
+  .smart-card-body li { margin-bottom: 4px; }
+  .smart-card-body h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin: 12px 0 6px; }
+  .smart-card-body h3:first-child { margin-top: 0; }
   .feedback-modal-footer {
     display: none; padding: 14px 24px; border-top: 1px solid var(--border);
     gap: 8px; justify-content: flex-end; flex-shrink: 0;
@@ -431,8 +482,22 @@
   </div>
 </div>
 
-<!-- ══════ DASHBOARD ══════ -->
+<!-- ══════ VIEW TOGGLE ══════ -->
+<div class="view-toggle" id="viewToggle">
+  <button class="active" id="btnModularView" onclick="switchView('modular')">Modular View</button>
+  <button id="btnSmartView" onclick="switchView('smart')">Smart View</button>
+</div>
+
+<!-- ══════ DASHBOARD (Modular View) ══════ -->
 <div class="dashboard" id="dashboard"></div>
+
+<!-- ══════ SMART DASHBOARD ══════ -->
+<div class="smart-dashboard" id="smartDashboard">
+  <div class="smart-loading" id="smartLoading">
+    <div class="spinner"></div>
+    <p>Generating AI-powered insights...</p>
+  </div>
+</div>
 
 <!-- ══════ ADD MODULE MODAL ══════ -->
 <div class="modal-overlay" id="addModal">
@@ -498,6 +563,9 @@
   let lastDocText = '';
   let lastFileName = '';
   let lastFileType = '';
+  let currentView = 'modular';
+  let smartViewData = null;
+  let smartViewLoaded = false;
 
   // ── DOM refs ──
   const uploadScreen = document.getElementById('uploadScreen');
@@ -726,7 +794,16 @@
     loadingScreen.classList.remove('active');
     dashHeader.classList.add('active');
     dashboard.classList.add('active');
+    document.getElementById('viewToggle').classList.add('active');
     initDrag();
+
+    // Reset smart view state
+    smartViewData = null;
+    smartViewLoaded = false;
+    document.getElementById('smartDashboard').innerHTML = '<div class="smart-loading" id="smartLoading"><div class="spinner"></div><p>Generating AI-powered insights...</p></div>';
+    currentView = 'modular';
+    document.getElementById('btnModularView').classList.add('active');
+    document.getElementById('btnSmartView').classList.remove('active');
 
     // Default to collapsed view
     allCollapsed = true;
@@ -1061,6 +1138,11 @@ ${clone.outerHTML}
     errorBox.classList.remove('active');
     fileInput.value = '';
     document.getElementById('textInput').value = '';
+    document.getElementById('viewToggle').classList.remove('active');
+    document.getElementById('smartDashboard').classList.remove('active');
+    document.getElementById('smartDashboard').innerHTML = '';
+    smartViewData = null;
+    smartViewLoaded = false;
   };
 
   // ── Helpers ──
@@ -1162,6 +1244,88 @@ ${content}
     a.download = 'expert_feedback.html';
     a.click();
   };
+
+  // ── View switching ──
+  window.switchView = function(view) {
+    currentView = view;
+    const btnModular = document.getElementById('btnModularView');
+    const btnSmart = document.getElementById('btnSmartView');
+    const smartDash = document.getElementById('smartDashboard');
+
+    if (view === 'modular') {
+      btnModular.classList.add('active');
+      btnSmart.classList.remove('active');
+      dashboard.classList.add('active');
+      smartDash.classList.remove('active');
+    } else {
+      btnSmart.classList.add('active');
+      btnModular.classList.remove('active');
+      dashboard.classList.remove('active');
+      smartDash.classList.add('active');
+
+      // Load smart view if not already loaded
+      if (!smartViewLoaded) {
+        loadSmartView();
+      }
+    }
+  };
+
+  async function loadSmartView() {
+    if (!lastDocText) return;
+    const smartDash = document.getElementById('smartDashboard');
+    const loading = document.getElementById('smartLoading');
+
+    smartDash.innerHTML = '';
+    const loadEl = document.createElement('div');
+    loadEl.className = 'smart-loading active';
+    loadEl.innerHTML = '<div class="spinner"></div><p>Generating AI-powered insights...</p>';
+    smartDash.appendChild(loadEl);
+
+    try {
+      const res = await fetch('/api/generate-smart-view', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: lastDocText,
+          fileName: lastFileName,
+          fileType: lastFileType
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      smartViewData = data;
+      smartViewLoaded = true;
+      renderSmartView(data);
+    } catch (err) {
+      smartDash.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c0392b;"><strong>Error generating Smart View</strong><p style="margin-top:8px;">${err.message}</p></div>`;
+    }
+  }
+
+  function renderSmartView(data) {
+    const smartDash = document.getElementById('smartDashboard');
+    smartDash.innerHTML = '';
+
+    for (const card of (data.cards || [])) {
+      const el = document.createElement('div');
+      el.className = 'smart-card' + (card.fullWidth ? ' full-width' : '');
+
+      const tagInfo = card.tagBg ? `background:${card.tagBg};color:${card.tagColor || '#3d4a5c'}` : 'background:#e8ecf1;color:#3d4a5c';
+
+      el.innerHTML = `
+        <div class="smart-card-header" style="background:${card.headerBg || '#f4f6f8'};">
+          <span class="smart-icon">${card.icon || ''}</span>
+          <span class="tag" style="${tagInfo}">${esc(card.tag || '')}</span>
+          <h2>${esc(card.title)}</h2>
+        </div>
+        <div class="smart-card-body">${card.content}</div>`;
+      smartDash.appendChild(el);
+    }
+  }
 </script>
 </body>
 </html>
