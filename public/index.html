@@ -360,36 +360,31 @@
   .btn-feedback { background: #4a90d9; color: #fff; }
   .btn-feedback:hover { background: #3a7bc8; }
 
-  /* ── View toggle ── */
-  .view-toggle {
-    display: none; justify-content: center; gap: 0;
-    max-width: 1440px; margin: 16px auto 0; padding: 0 20px;
-  }
-  .view-toggle.active { display: flex; }
-  .view-toggle button {
-    padding: 10px 28px; border: 2px solid var(--navy); font-size: 13px;
-    font-weight: 700; cursor: pointer; transition: .15s; background: #fff; color: var(--navy);
-  }
-  .view-toggle button:first-child { border-radius: 8px 0 0 8px; border-right: 1px solid var(--navy); }
-  .view-toggle button:last-child { border-radius: 0 8px 8px 0; border-left: 1px solid var(--navy); }
-  .view-toggle button.active { background: var(--navy); color: #fff; }
-  .view-toggle button:hover:not(.active) { background: #eef1f5; }
-
-  /* ── Smart View ── */
+  /* ── Smart View / Insights ── */
   .smart-dashboard {
     max-width: 1440px; margin: 0 auto;
-    padding: 24px 20px 60px;
+    padding: 0 20px 60px;
     display: none;
     grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
     gap: 20px;
   }
   .smart-dashboard.active { display: grid; }
-  @media (max-width: 500px) { .smart-dashboard { grid-template-columns: 1fr; padding: 14px; } }
+  @media (max-width: 500px) { .smart-dashboard { grid-template-columns: 1fr; padding: 0 14px 40px; } }
+
+  .smart-section-label {
+    grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
+    padding: 10px 0 4px; margin-top: 4px;
+  }
+  .smart-section-label h2 {
+    font-size: 15px; font-weight: 700; color: var(--navy); margin: 0;
+  }
+  .smart-section-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
 
   .smart-loading {
-    display: none; grid-column: 1 / -1; text-align: center; padding: 60px 20px;
+    grid-column: 1 / -1; text-align: center; padding: 60px 20px;
   }
-  .smart-loading.active { display: block; }
   .smart-loading .spinner { margin: 0 auto 14px; }
   .smart-loading p { font-size: 14px; color: var(--text-muted); }
 
@@ -402,10 +397,20 @@
   .smart-card.full-width { grid-column: 1 / -1; }
   .smart-card-header {
     padding: 14px 16px; display: flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none;
   }
   .smart-card-header h2 { flex: 1; font-size: 14px; font-weight: 700; }
   .smart-card-header .smart-icon { font-size: 18px; flex-shrink: 0; }
-  .smart-card-body { padding: 0 16px 16px; font-size: 13px; line-height: 1.65; }
+  .smart-card-header .collapse-btn {
+    background: none; border: none; cursor: pointer; font-size: 13px;
+    color: #8896a6; padding: 3px 5px; border-radius: 4px; flex-shrink: 0;
+  }
+  .smart-card-header .collapse-btn:hover { background: #eef1f5; color: var(--text); }
+  .smart-card-body {
+    padding: 0 16px 16px; font-size: 13px; line-height: 1.65;
+    overflow: hidden; transition: max-height .3s, padding .3s;
+  }
+  .smart-card.collapsed .smart-card-body { max-height: 0 !important; padding-top: 0; padding-bottom: 0; }
   .smart-card-body ul { padding-left: 18px; margin: 6px 0; }
   .smart-card-body li { margin-bottom: 4px; }
   .smart-card-body h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin: 12px 0 6px; }
@@ -428,7 +433,7 @@
   @media print {
     .header-actions, .module-actions, .add-item-btn, .item-actions, .cl-del, .veto-del { display: none !important; }
     .module { break-inside: avoid; }
-    .upload-screen, .loading-screen, .feedback-overlay { display: none !important; }
+    .upload-screen, .loading-screen, .feedback-overlay, .smart-section-label { display: none !important; }
   }
 </style>
 </head>
@@ -474,7 +479,7 @@
   </div>
   <div class="header-actions">
     <button class="btn-secondary" onclick="toggleAll()">Collapse / Expand All</button>
-    <button class="btn-feedback" onclick="requestFeedback()">Feedback</button>
+    <button class="btn-feedback" onclick="toggleInsights()">Insights</button>
     <button class="btn-add" onclick="openAddModal()">+ Add Module</button>
     <button class="btn-secondary" onclick="exportHTML()">Export HTML</button>
     <button class="btn-secondary" onclick="exportPDF()">Export PDF</button>
@@ -482,22 +487,11 @@
   </div>
 </div>
 
-<!-- ══════ VIEW TOGGLE ══════ -->
-<div class="view-toggle" id="viewToggle">
-  <button class="active" id="btnModularView" onclick="switchView('modular')">Modular View</button>
-  <button id="btnSmartView" onclick="switchView('smart')">Smart View</button>
-</div>
-
 <!-- ══════ DASHBOARD (Modular View) ══════ -->
 <div class="dashboard" id="dashboard"></div>
 
-<!-- ══════ SMART DASHBOARD ══════ -->
-<div class="smart-dashboard" id="smartDashboard">
-  <div class="smart-loading" id="smartLoading">
-    <div class="spinner"></div>
-    <p>Generating AI-powered insights...</p>
-  </div>
-</div>
+<!-- ══════ INSIGHTS (Smart View) ══════ -->
+<div class="smart-dashboard" id="smartDashboard"></div>
 
 <!-- ══════ ADD MODULE MODAL ══════ -->
 <div class="modal-overlay" id="addModal">
@@ -563,9 +557,9 @@
   let lastDocText = '';
   let lastFileName = '';
   let lastFileType = '';
-  let currentView = 'modular';
   let smartViewData = null;
   let smartViewLoaded = false;
+  let insightsVisible = false;
 
   // ── DOM refs ──
   const uploadScreen = document.getElementById('uploadScreen');
@@ -794,16 +788,14 @@
     loadingScreen.classList.remove('active');
     dashHeader.classList.add('active');
     dashboard.classList.add('active');
-    document.getElementById('viewToggle').classList.add('active');
     initDrag();
 
-    // Reset smart view state
+    // Reset insights state
     smartViewData = null;
     smartViewLoaded = false;
-    document.getElementById('smartDashboard').innerHTML = '<div class="smart-loading" id="smartLoading"><div class="spinner"></div><p>Generating AI-powered insights...</p></div>';
-    currentView = 'modular';
-    document.getElementById('btnModularView').classList.add('active');
-    document.getElementById('btnSmartView').classList.remove('active');
+    insightsVisible = false;
+    document.getElementById('smartDashboard').classList.remove('active');
+    document.getElementById('smartDashboard').innerHTML = '';
 
     // Default to collapsed view
     allCollapsed = true;
@@ -1138,11 +1130,11 @@ ${clone.outerHTML}
     errorBox.classList.remove('active');
     fileInput.value = '';
     document.getElementById('textInput').value = '';
-    document.getElementById('viewToggle').classList.remove('active');
     document.getElementById('smartDashboard').classList.remove('active');
     document.getElementById('smartDashboard').innerHTML = '';
     smartViewData = null;
     smartViewLoaded = false;
+    insightsVisible = false;
   };
 
   // ── Helpers ──
@@ -1245,41 +1237,26 @@ ${content}
     a.click();
   };
 
-  // ── View switching ──
-  window.switchView = function(view) {
-    currentView = view;
-    const btnModular = document.getElementById('btnModularView');
-    const btnSmart = document.getElementById('btnSmartView');
+  // ── Insights toggle ──
+  window.toggleInsights = function() {
     const smartDash = document.getElementById('smartDashboard');
+    insightsVisible = !insightsVisible;
 
-    if (view === 'modular') {
-      btnModular.classList.add('active');
-      btnSmart.classList.remove('active');
-      dashboard.classList.add('active');
-      smartDash.classList.remove('active');
-    } else {
-      btnSmart.classList.add('active');
-      btnModular.classList.remove('active');
-      dashboard.classList.remove('active');
+    if (insightsVisible) {
       smartDash.classList.add('active');
-
-      // Load smart view if not already loaded
       if (!smartViewLoaded) {
         loadSmartView();
       }
+    } else {
+      smartDash.classList.remove('active');
     }
   };
 
   async function loadSmartView() {
     if (!lastDocText) return;
     const smartDash = document.getElementById('smartDashboard');
-    const loading = document.getElementById('smartLoading');
 
-    smartDash.innerHTML = '';
-    const loadEl = document.createElement('div');
-    loadEl.className = 'smart-loading active';
-    loadEl.innerHTML = '<div class="spinner"></div><p>Generating AI-powered insights...</p>';
-    smartDash.appendChild(loadEl);
+    smartDash.innerHTML = '<div class="smart-loading"><div class="spinner"></div><p>Generating AI-powered insights...</p></div>';
 
     try {
       const res = await fetch('/api/generate-smart-view', {
@@ -1302,7 +1279,7 @@ ${content}
       smartViewLoaded = true;
       renderSmartView(data);
     } catch (err) {
-      smartDash.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c0392b;"><strong>Error generating Smart View</strong><p style="margin-top:8px;">${err.message}</p></div>`;
+      smartDash.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#c0392b;"><strong>Error generating insights</strong><p style="margin-top:8px;">${err.message}</p></div>`;
     }
   }
 
@@ -1310,22 +1287,36 @@ ${content}
     const smartDash = document.getElementById('smartDashboard');
     smartDash.innerHTML = '';
 
+    // Section label
+    const label = document.createElement('div');
+    label.className = 'smart-section-label';
+    label.innerHTML = '<h2>AI Insights</h2>';
+    smartDash.appendChild(label);
+
     for (const card of (data.cards || [])) {
       const el = document.createElement('div');
-      el.className = 'smart-card' + (card.fullWidth ? ' full-width' : '');
+      el.className = 'smart-card collapsed' + (card.fullWidth ? ' full-width' : '');
 
-      const tagInfo = card.tagBg ? `background:${card.tagBg};color:${card.tagColor || '#3d4a5c'}` : 'background:#e8ecf1;color:#3d4a5c';
+      const tagStyle = card.tagBg ? `background:${card.tagBg};color:${card.tagColor || '#3d4a5c'}` : 'background:#e8ecf1;color:#3d4a5c';
 
       el.innerHTML = `
-        <div class="smart-card-header" style="background:${card.headerBg || '#f4f6f8'};">
+        <div class="smart-card-header" style="background:${card.headerBg || '#f4f6f8'};" onclick="window._toggleSmartCard(this)">
           <span class="smart-icon">${card.icon || ''}</span>
-          <span class="tag" style="${tagInfo}">${esc(card.tag || '')}</span>
+          <span class="tag" style="${tagStyle}">${esc(card.tag || '')}</span>
           <h2>${esc(card.title)}</h2>
+          <span class="collapse-btn">&#9654;</span>
         </div>
         <div class="smart-card-body">${card.content}</div>`;
       smartDash.appendChild(el);
     }
   }
+
+  window._toggleSmartCard = function(header) {
+    const card = header.closest('.smart-card');
+    card.classList.toggle('collapsed');
+    const btn = card.querySelector('.collapse-btn');
+    btn.textContent = card.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+  };
 </script>
 </body>
 </html>
