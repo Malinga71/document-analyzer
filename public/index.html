@@ -1602,13 +1602,17 @@ ${content}
     let pendingLines = [];
 
     // Module-level headings (major sections)
+    // Module-level headings: numbered section headings (e.g. "1. Introduction",
+    // "2 Scope of Work", "3. terms") are treated as module boundaries since
+    // documents commonly use numbered sections as their primary structure.
     const moduleHeadings = [
       { re: /^---\s*(Page \d+)\s*---$/i, extract: m => m[1] },
       { re: /^---\s*(Sheet:.+)\s*---$/i, extract: m => m[1] },
       { re: /^---\s*(Slide \d+)\s*---$/i, extract: m => m[1] },
       { re: /^---\s*(CSV Content)\s*---$/i, extract: m => m[1] },
       { re: /^#{1,2}\s+(.+)/, extract: m => m[1] },
-      { re: /^(\d+\.)\s+([A-Z].{2,})$/, extract: m => m[1] + ' ' + m[2] },
+      { re: /^(\d+)\.?\s+(\D.{2,})$/, extract: m => m[1] + '. ' + m[2] },        // "1. Title" or "1 Title" (not "1.1 sub")
+      { re: /^(\d+)\)\s+(.{3,})$/, extract: m => m[1] + ') ' + m[2] },          // "1) Title"
       { re: /^(SECTION|ARTICLE|PART|CHAPTER|CLAUSE|SCHEDULE|ANNEXURE|APPENDIX)\s+(.+)/i, extract: m => m[1] + ' ' + m[2] },
       { re: /^[A-Z][A-Z\s\-&]{5,}$/, extract: m => m[0] },
     ];
