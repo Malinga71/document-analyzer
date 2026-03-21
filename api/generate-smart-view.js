@@ -86,7 +86,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { text, fileName, fileType } = req.body;
+  const { text, fileName, fileType } = req.body || {};
 
   if (!text || !text.trim()) {
     return res.status(400).json({ error: 'No document text provided.' });

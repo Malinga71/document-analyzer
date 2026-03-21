@@ -89,6 +89,10 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!req.body) {
+    return res.status(400).json({ error: 'No request body. The document may be too large.' });
+  }
+
   const { text, fileName, fileType } = req.body;
 
   if (!text || !text.trim()) {
