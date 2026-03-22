@@ -1,95 +1,102 @@
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const { jsonrepair } = require('jsonrepair');
 
-const SMART_VIEW_PROMPT = `You are an expert document analyst creating an insightful, analytical summary of a document. Instead of reproducing the document content verbatim, your job is to extract and present the most important insights, patterns, and implications in a way that maximizes understanding for the reader.
+const SYSTEM_PROMPT = `You are an expert document analyst. Your task is to convert a document into a structured JSON representation that captures ALL content with perfect fidelity. This will be rendered as interactive analysis cards.
 
-Create a JSON response with analytical cards that highlight what matters most:
+CRITICAL RULES FOR CONTENT FIDELITY:
+1. EVERY piece of content in the document MUST appear in your output — do not summarize, paraphrase, or skip anything. If the document has 30 clauses, all 30 must appear.
+2. USE THE DOCUMENT'S OWN TITLES AND HEADINGS as module titles. Do NOT invent or rephrase section titles. If the document says "SCHEDULE 1 – REPAYMENT TERMS", use that exact text.
+3. Preserve the document's hierarchy: main sections become modules, sub-sections become items within those modules.
+4. TABLES must be rendered as "comparison" type with the EXACT column headers from the document, not generic ones.
+5. NUMBERED LISTS and LETTERED LISTS (a, b, c or i, ii, iii) must preserve their numbering/lettering in the output.
+6. Maintain the document's original ORDER — modules should follow the same sequence as sections in the document.
 
+APPROACH — follow these steps mentally before generating JSON:
+Step 1: Identify the document's structure — title, sections, sub-sections, tables, lists, definitions, schedules/annexures.
+Step 2: Map each section to the best module type (see below).
+Step 3: Verify completeness — cross-check that no section, clause, table, or paragraph is missing.
+
+Return a JSON object:
 {
-  "cards": [
+  "title": "The document's actual title (from the document, not invented)",
+  "subtitle": "Document type + key identifier (e.g., 'Loan Agreement between X and Y, dated...')",
+  "modules": [
     {
-      "title": "Card title",
-      "icon": "emoji icon",
-      "tag": "Category label",
-      "tagBg": "#hex background",
-      "tagColor": "#hex text",
-      "headerBg": "#hex light background",
+      "id": "mod_1",
+      "title": "Exact section title from the document",
+      "tag": "category_key",
+      "clauseRef": "Cl. 3.1 or S. 2 (if the document uses section/clause numbers)",
       "fullWidth": false,
-      "content": "HTML content"
+      "type": "items | comparison | milestones | steps | definitions | vetoList | clauseList",
+      ... type-specific fields
     }
-  ]
+  ],
+  "tags": {
+    "category_key": { "label": "Display Name", "bg": "#hex_background", "color": "#hex_text" }
+  }
 }
 
-CARD TYPES TO INCLUDE (choose the most relevant for the document):
+MODULE TYPES — choose the BEST match for each section's content:
 
-1. **Executive Summary** (ALWAYS include, fullWidth: true)
-   - 3-5 sentence overview of the document's purpose, key parties, and core terms
-   - Icon: 📋
+1. "items" (DEFAULT — use for narrative sections, clauses with sub-points, mixed content):
+   "items": [{ "label": "SUB-HEADING OR LABEL", "content": "Full text content. Use <strong> for bold, <br> for line breaks, <em> for emphasis. Preserve all details." }]
+   IMPORTANT: Each item's "label" should be the actual sub-heading, clause reference, or descriptive label FROM the document. The "content" should contain the COMPLETE text — do not truncate.
 
-2. **Key Numbers & Figures** (if the document contains financial/quantitative data)
-   - Extract ALL important numbers, amounts, dates, percentages, deadlines
-   - Present as a clean list with bold labels
-   - Icon: 📊
+2. "comparison" (for ANY tabular data — schedules, fee tables, comparison matrices, data grids):
+   "columns": ["Exact Column Header 1", "Exact Column Header 2", ...],
+   "rows": [["Cell value", "Cell value", ...]]
+   IMPORTANT: Use the table's ACTUAL column headers. Include ALL rows, not a sample. Set "fullWidth": true.
 
-3. **Key Obligations & Responsibilities** (for contracts, agreements, policies)
-   - Who must do what? Summarize each party's main obligations
-   - Icon: ⚖️
+3. "milestones" (percentage-based items — vesting schedules, equity splits, completion stages):
+   "milestones": [{ "pct": "25%", "label": "Description" }]
 
-4. **Risk Flags & Red Zones** (ALWAYS include)
-   - Unusual terms, one-sided clauses, missing protections, ambiguous language
-   - Potential issues a reader should be aware of
-   - Use <span style="color:#c0392b"> for high-risk items
-   - Icon: 🚩
+4. "steps" (sequential processes, numbered procedures, timelines, roadmaps):
+   "steps": [{ "num": 1, "color": "teal|orange", "title": "Step Title", "desc": "Full description" }]
 
-5. **Timeline & Key Dates** (if applicable)
-   - Deadlines, milestones, effective dates, expiry, renewal dates
-   - Present chronologically
-   - Icon: 📅
+5. "definitions" (term-definition pairs, glossary, interpretation sections):
+   "definitions": [{ "term": "Exact Term", "meaning": "Exact definition from the document" }]
+   IMPORTANT: Include EVERY definition from the document.
 
-6. **Definitions & Key Terms** (if the document defines important terms)
-   - Only the most important definitions that affect interpretation
-   - Icon: 📖
+6. "vetoList" (restrictions, prohibitions, negative covenants, reserved matters, risk items):
+   "vetoItems": ["Full text of each restriction"]
 
-7. **Relationships & Structure** (for complex documents)
-   - How parties relate to each other, organizational structure, hierarchies
-   - Icon: 🔗
+7. "clauseList" (flat lists — deliverables, scope items, features, obligations, conditions):
+   "listColor": "teal|orange",
+   "clauseItems": ["<strong>Label/Number:</strong> full text of each item"]
 
-8. **Conditions & Triggers** (if applicable)
-   - What conditions must be met? What triggers certain actions?
-   - Events of default, termination triggers, conditions precedent
-   - Icon: ⚡
+ALERTS: Add to any module if needed: "alerts": [{"type": "warn|info", "text": "Alert text"}]
+- Use "warn" for blank fields, missing information, unusual terms, or potential issues.
+- Use "info" for cross-references, notes, or context.
 
-9. **What's Missing** (ALWAYS include)
-   - Standard elements you'd expect in this type of document that are absent
-   - Blank fields, undefined terms, missing schedules
-   - Icon: ❓
+TAG RULES:
+- Auto-detect 3-7 logical categories from the document content (e.g., "Legal", "Financial", "Operations", "Governance", "Technical", "HR", "Compliance", "Schedules").
+- Use these bg colors: #e8ecf1, #d0e4dd, #fef3dc, #ebe0f5, #fde2e2, #d1ecf1, #dff0d8, #f5e6ca, #e0e7ff.
+- Use appropriate dark text colors for readability.
+- Set "fullWidth": true for overview/summary modules, comparison tables, and any wide content.
 
-10. **Bottom Line** (ALWAYS include, fullWidth: true)
-    - 2-3 sentences: What should the reader take away? What action should they consider?
-    - Icon: 💡
+GROUPING RULES:
+- Each major section/heading in the document should be its own module.
+- Sub-sections within a major section should be items within that module, NOT separate modules (unless they are substantial enough to warrant their own module).
+- Schedules, annexures, and appendices should each be their own module.
+- If a section contains a mix of narrative text and a table, create TWO modules: one "items" for the narrative, one "comparison" for the table.
+- If the document has HTML structure hints (headings, tables), use those to determine hierarchy.
 
-CONTENT FORMATTING RULES:
-- Use clean HTML: <ul>, <li>, <strong>, <em>, <br>, <span style="...">
-- Use color accents sparingly: green (#2d7a4f) for positive, orange (#c47a15) for caution, red (#c0392b) for risk
-- Be specific — reference actual content from the document, don't be generic
-- Keep each card focused and scannable — use bullet points over paragraphs
-- DO NOT reproduce the full document text — this is an analytical view, not a copy
+BLANK FIELDS: For blank fields, placeholders, or lines in the document, use: <span class="blank">______</span>
 
-TAG COLORS (distribute across cards):
-- Use these bg colors: #e8ecf1, #d0e4dd, #fef3dc, #ebe0f5, #fde2e2, #d1ecf1, #dff0d8, #f5e6ca, #e0e7ff
-- headerBg should be a lighter version of the tag color
-- Use appropriate dark text colors for tags
-
-OUTPUT: Return ONLY valid JSON. No markdown fences, no commentary.`;
+OUTPUT: Return ONLY valid JSON. No markdown fences, no commentary, no trailing commas.`;
 
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { text, fileName, fileType } = req.body || {};
+  const body = req.body || {};
+  const { text, fileName, fileType } = body;
 
   if (!text || !text.trim()) {
-    return res.status(400).json({ error: 'No document text provided.' });
+    return res.status(400).json({ 
+      error: `No document text provided. Body keys: ${Object.keys(body).join(', ') || 'none'}.` 
+    });
   }
 
   const maxChars = 100000;
@@ -100,13 +107,13 @@ module.exports = async function handler(req, res) {
     truncated = true;
   }
 
-  const userMessage = `File: "${fileName}" (${fileType})${truncated ? ' [TRUNCATED]' : ''}
+  const userMessage = `File: "${fileName}" (${fileType})${truncated ? ' [TRUNCATED — very large document, first ~100k chars shown]' : ''}
 
 --- DOCUMENT CONTENT ---
 ${docText}
 --- END ---
 
-Analyze this document and create the Smart View insight cards.`;
+Analyze the entire document above and return the analysis JSON.`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -119,7 +126,7 @@ Analyze this document and create the Smart View insight cards.`;
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 16000,
-        system: SMART_VIEW_PROMPT,
+        system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }]
       })
     });
@@ -135,27 +142,34 @@ Analyze this document and create the Smart View insight cards.`;
     const data = await response.json();
     const raw = data.content?.[0]?.text || '';
 
+    // Extract JSON string from response (strip markdown fences if present)
+    let jsonStr = raw;
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch) {
+      jsonStr = fenceMatch[1];
+    } else {
+      const start = raw.indexOf('{');
+      if (start !== -1) jsonStr = raw.substring(start);
+    }
+
+    // Use jsonrepair to handle ALL malformed JSON cases:
+    // unescaped characters, truncation, trailing commas, missing brackets, etc.
     let json;
     try {
-      json = JSON.parse(raw);
+      json = JSON.parse(jsonStr);
     } catch {
-      const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (match) {
-        json = JSON.parse(match[1]);
-      } else {
-        const start = raw.indexOf('{');
-        const end = raw.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-          json = JSON.parse(raw.substring(start, end + 1));
-        } else {
-          throw new Error('Could not parse AI response as JSON');
-        }
+      try {
+        json = JSON.parse(jsonrepair(jsonStr));
+      } catch (repairErr) {
+        console.error('JSON repair failed:', repairErr.message);
+        console.error('Raw response snippet:', raw.substring(0, 500));
+        throw new Error(`Could not parse or repair AI response as JSON: ${repairErr.message}`);
       }
     }
 
     res.json(json);
   } catch (err) {
-    console.error('Smart view error:', err.message);
+    console.error('Error:', err.message);
     res.status(500).json({ error: err.message });
   }
-}
+};
