@@ -233,7 +233,7 @@
 
   .module-body { padding: 0 16px 16px; overflow: visible; }
   .module.collapsed .module-body { display: none; }
-  .module.collapsed { min-height: 120px; }
+  .module.collapsed .module-header { min-height: 100px; align-items: flex-start; padding-top: 20px; }
 
   /* ── Items (draggable sub-items) ── */
   .item {
@@ -464,7 +464,7 @@
     overflow: visible;
   }
   .smart-card.collapsed .smart-card-body { display: none; }
-  .smart-card.collapsed { min-height: 120px; }
+  .smart-card.collapsed .smart-card-header { min-height: 100px; align-items: flex-start; padding-top: 20px; }
   .smart-card-body ul { padding-left: 18px; margin: 6px 0; }
   .smart-card-body li { margin-bottom: 4px; }
   .smart-card-body h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin: 12px 0 6px; }
