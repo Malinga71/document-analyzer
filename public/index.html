@@ -202,7 +202,7 @@
   .module-header {
     display: flex; align-items: center; gap: 8px;
     padding: 16px 16px; cursor: grab; user-select: none;
-    min-height: 56px;
+    min-height: 120px;
   }
   .module-header:active { cursor: grabbing; }
   .drag-handle { color: #b0b8c4; font-size: 15px; flex-shrink: 0; }
@@ -233,7 +233,7 @@
 
   .module-body { padding: 0 16px 16px; overflow: visible; }
   .module.collapsed .module-body { display: none; }
-  .module.collapsed { min-height: 60px; }
+  .module.collapsed { min-height: 120px; }
 
   /* ── Items (draggable sub-items) ── */
   .item {
@@ -450,7 +450,7 @@
   .smart-card.full-width { grid-column: 1 / -1; }
   .smart-card-header {
     padding: 16px 16px; display: flex; align-items: center; gap: 8px;
-    cursor: pointer; user-select: none; min-height: 56px;
+    cursor: pointer; user-select: none; min-height: 120px;
   }
   .smart-card-header h2 { flex: 1; font-size: 14px; font-weight: 700; word-wrap: break-word; overflow-wrap: break-word; }
   .smart-card-header .smart-icon { font-size: 18px; flex-shrink: 0; }
@@ -464,7 +464,7 @@
     overflow: visible;
   }
   .smart-card.collapsed .smart-card-body { display: none; }
-  .smart-card.collapsed { min-height: 60px; }
+  .smart-card.collapsed { min-height: 120px; }
   .smart-card-body ul { padding-left: 18px; margin: 6px 0; }
   .smart-card-body li { margin-bottom: 4px; }
   .smart-card-body h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin: 12px 0 6px; }
