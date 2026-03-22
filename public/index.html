@@ -191,7 +191,7 @@
   /* ── Module ── */
   .module {
     background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: var(--radius); overflow: hidden;
+    border-radius: var(--radius); overflow: visible;
     transition: box-shadow .2s, opacity .2s;
   }
   .module:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
@@ -256,7 +256,7 @@
     font-size: 11px; color: #a0a8b4; padding: 2px 4px; border-radius: 3px;
   }
   .item-actions button:hover, .cl-del:hover, .veto-del:hover { color: var(--danger); background: #fde8e8; }
-  .item-content { font-size: 13px; }
+  .item-content { font-size: 13px; overflow-wrap: break-word; word-wrap: break-word; }
   [contenteditable="true"]:focus {
     outline: 2px solid var(--teal); border-radius: 3px; padding: 1px 3px; background: #fff;
   }
@@ -443,7 +443,7 @@
 
   .smart-card {
     background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: var(--radius); overflow: hidden;
+    border-radius: var(--radius); overflow: visible;
     transition: box-shadow .2s;
   }
   .smart-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.08); }
