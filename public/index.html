@@ -230,10 +230,9 @@
   .module-actions button:hover { background: #eef1f5; color: var(--text); }
   .module-actions .btn-delete:hover { color: var(--danger); background: #fde8e8; }
 
-  .module-body { padding: 0 16px 16px; overflow: hidden; transition: max-height .3s, padding .3s; }
-  .module.collapsed .module-body { max-height: 0 !important; padding-top: 0; padding-bottom: 0; }
-  .module.collapsed { height: 52px; }
-  .module.collapsed.full-width { height: 52px; }
+  .module-body { padding: 0 16px 16px; overflow: visible; }
+  .module.collapsed .module-body { display: none; }
+  .module.collapsed { height: auto; }
 
   /* ── Items (draggable sub-items) ── */
   .item {
@@ -461,10 +460,10 @@
   .smart-card-header .collapse-btn:hover { background: #eef1f5; color: var(--text); }
   .smart-card-body {
     padding: 0 16px 16px; font-size: 13px; line-height: 1.65;
-    overflow: hidden; transition: max-height .3s, padding .3s;
+    overflow: visible;
   }
-  .smart-card.collapsed .smart-card-body { max-height: 0 !important; padding-top: 0; padding-bottom: 0; }
-  .smart-card.collapsed { height: 52px; }
+  .smart-card.collapsed .smart-card-body { display: none; }
+  .smart-card.collapsed { height: auto; }
   .smart-card-body ul { padding-left: 18px; margin: 6px 0; }
   .smart-card-body li { margin-bottom: 4px; }
   .smart-card-body h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin: 12px 0 6px; }
@@ -1143,7 +1142,7 @@ ${styles}
 .dashboard, .smart-dashboard, .original-view { display: block !important; }
 .dashboard { display: grid !important; }
 .smart-dashboard { display: grid !important; }
-.module-body, .smart-card-body { max-height: none !important; padding: 0 16px 16px !important; }
+.module-body, .smart-card-body { display: block !important; padding: 0 16px 16px !important; }
 .module, .smart-card { height: auto !important; }
 .upload-screen, .loading-screen, .feedback-overlay, .modal-overlay, .tab-bar { display: none !important; }
 body { background: #fff; }
