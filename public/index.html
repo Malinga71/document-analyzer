@@ -1875,6 +1875,12 @@ ${content}
     const smartDash = document.getElementById('smartDashboard');
     smartDash.innerHTML = '';
 
+    // Add heading
+    const heading = document.createElement('div');
+    heading.style.cssText = 'grid-column:1/-1;padding:8px 0 4px;';
+    heading.innerHTML = '<h2 style="font-size:20px;font-weight:700;color:var(--navy);margin:0;">Document Insights</h2>';
+    smartDash.appendChild(heading);
+
     for (const card of (data.cards || [])) {
       const el = document.createElement('div');
       el.className = 'smart-card collapsed' + (card.fullWidth ? ' full-width' : '');
